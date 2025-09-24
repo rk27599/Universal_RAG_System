@@ -4,7 +4,7 @@ Test script to demonstrate RAG improvements for tensor parallelism queries
 """
 
 import os
-from enhanced_rag_system_v2 import EnhancedRAGSystemV2
+from src.enhanced_rag_system_v2 import EnhancedRAGSystemV2
 
 def test_tensor_parallelism_improvements():
     """Test the improved tensor parallelism handling"""
@@ -16,7 +16,7 @@ def test_tensor_parallelism_improvements():
     rag_system = EnhancedRAGSystemV2()
 
     # Check if we need to refresh the data with new URLs
-    structured_file = "pytorch_docs_structured.json"
+    structured_file = "data/pytorch_docs_structured.json"
 
     if os.path.exists(structured_file):
         print("📄 Using existing structured data...")
@@ -77,7 +77,7 @@ def test_tensor_parallelism_improvements():
 
     print(f"\n💡 IMPROVEMENT SUGGESTIONS:")
     print("=" * 80)
-    print("1. 🔄 Re-scrape with expanded URLs: `rm pytorch_docs_structured.json && python improved_pytorch_scraper.py`")
+    print("1. 🔄 Re-scrape with expanded URLs: `rm data/pytorch_docs_structured.json && python src/improved_pytorch_scraper.py`")
     print("2. 🎯 Try more specific queries: 'torch.distributed sharding tutorial'")
     print("3. 📊 Look for scores >0.6 for high-quality matches")
     print("4. 🤖 Use rag_query() with Ollama for complete answers")

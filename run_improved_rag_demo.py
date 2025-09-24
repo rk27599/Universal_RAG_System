@@ -5,8 +5,8 @@ Improved RAG Demo - Clean version with enhanced PyTorch documentation system
 
 import os
 import time
-from improved_pytorch_scraper import ImprovedPyTorchScraper
-from enhanced_rag_system_v2 import EnhancedRAGSystemV2
+from src.improved_pytorch_scraper import ImprovedPyTorchScraper
+from src.enhanced_rag_system_v2 import EnhancedRAGSystemV2
 
 def run_complete_pipeline():
     """Run the complete improved RAG pipeline"""
@@ -15,7 +15,7 @@ def run_complete_pipeline():
     print("=" * 80)
 
     # Step 1: Check if structured data exists, if not scrape it
-    structured_file = "pytorch_docs_structured.json"
+    structured_file = "data/pytorch_docs_structured.json"
 
     if not os.path.exists(structured_file):
         print("📄 Step 1: Scraping PyTorch Documentation with improved scraper...")
@@ -65,7 +65,7 @@ def show_system_stats():
     print(f"\n📊 SYSTEM STATISTICS")
     print("=" * 80)
 
-    structured_file = "pytorch_docs_structured.json"
+    structured_file = "data/pytorch_docs_structured.json"
 
     if os.path.exists(structured_file):
         import json
