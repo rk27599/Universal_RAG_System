@@ -13,25 +13,34 @@ import time
 from typing import List, Dict, Set, Optional
 import os
 from urllib.robotparser import RobotFileParser
+from pathlib import Path
+import glob
 
 
 class WebScraper:
     """Generic web scraper that can handle any website"""
 
-    def __init__(self, base_url: str = None, respect_robots_txt: bool = True):
+    def __init__(self, base_url: str = None, respect_robots_txt: bool = True, local_mode: bool = False):
         self.base_url = base_url
         self.visited_urls: Set[str] = set()
         self.structured_docs: List[Dict] = []
         self.respect_robots_txt = respect_robots_txt
-        self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (compatible; Generic RAG Scraper; +https://example.com/bot)'
-        })
+        self.local_mode = local_mode
 
-        # Initialize robots.txt parser if needed
-        self.robots_parser = None
-        if base_url and respect_robots_txt:
-            self._init_robots_parser()
+        # Only initialize web session if not in local mode
+        if not local_mode:
+            self.session = requests.Session()
+            self.session.headers.update({
+                'User-Agent': 'Mozilla/5.0 (compatible; Generic RAG Scraper; +https://example.com/bot)'
+            })
+
+            # Initialize robots.txt parser if needed
+            self.robots_parser = None
+            if base_url and respect_robots_txt:
+                self._init_robots_parser()
+        else:
+            self.session = None
+            self.robots_parser = None
 
     def _init_robots_parser(self):
         """Initialize robots.txt parser for the base domain"""
@@ -177,18 +186,23 @@ class WebScraper:
 
         return soup
 
-    def extract_structured_content(self, url: str) -> Optional[Dict]:
-        """Extract structured content from any web page"""
+    def extract_structured_content(self, url: str, html_content: str = None) -> Optional[Dict]:
+        """Extract structured content from web page or local HTML content"""
 
         print(f"   📄 Processing: {url}")
 
         try:
-            response = self.session.get(url, timeout=15)
-            if response.status_code != 200:
-                print(f"      ❌ Failed: {response.status_code}")
-                return None
+            if html_content:
+                # Use provided HTML content (for local files)
+                soup = BeautifulSoup(html_content, 'html.parser')
+            else:
+                # Fetch from web (original behavior)
+                response = self.session.get(url, timeout=15)
+                if response.status_code != 200:
+                    print(f"      ❌ Failed: {response.status_code}")
+                    return None
+                soup = BeautifulSoup(response.text, 'html.parser')
 
-            soup = BeautifulSoup(response.text, 'html.parser')
             soup = self.clean_content(soup)
 
             # Find main content area (try common patterns)
@@ -207,10 +221,16 @@ class WebScraper:
             # Extract structured sections
             sections = self.extract_sections(main_content, url, page_title)
 
+            # Determine domain - use file scheme for local files
+            if url.startswith('file://'):
+                domain = 'local'
+            else:
+                domain = urlparse(url).netloc
+
             doc_structure = {
                 "url": url,
                 "page_title": page_title,
-                "domain": urlparse(url).netloc,
+                "domain": domain,
                 "sections": sections,
                 "total_sections": len(sections)
             }
@@ -326,6 +346,115 @@ class WebScraper:
             if any(cells):  # Only add non-empty rows
                 rows.append(" | ".join(cells))
         return "\n".join(rows)
+
+    def extract_from_local_file(self, file_path: str) -> Optional[Dict]:
+        """Extract structured content from a local HTML file"""
+
+        try:
+            file_path = Path(file_path).resolve()
+
+            if not file_path.exists():
+                print(f"   ❌ File not found: {file_path}")
+                return None
+
+            if not file_path.suffix.lower() in ['.html', '.htm']:
+                print(f"   ⚠️ Not an HTML file: {file_path}")
+                return None
+
+            print(f"   📂 Reading local file: {file_path.name}")
+
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                html_content = f.read()
+
+            # Create file:// URL for consistency
+            file_url = f"file://{file_path}"
+
+            return self.extract_structured_content(file_url, html_content)
+
+        except Exception as e:
+            print(f"   ❌ Error reading {file_path}: {e}")
+            return None
+
+    def process_local_files(self, file_paths: List[str], output_file: str = "data/local_docs_structured.json") -> Dict:
+        """Process multiple local HTML files"""
+
+        print(f"🚀 Processing {len(file_paths)} local HTML files...")
+
+        structured_docs = []
+
+        for i, file_path in enumerate(file_paths, 1):
+            print(f"\n📂 Processing {i}/{len(file_paths)}: {Path(file_path).name}")
+
+            doc_structure = self.extract_from_local_file(file_path)
+            if doc_structure:
+                structured_docs.append(doc_structure)
+
+        print(f"\n🧠 Creating semantic chunks from {len(structured_docs)} documents...")
+        semantic_chunks = self.create_semantic_chunks(structured_docs)
+
+        # Save structured data
+        output_data = {
+            "metadata": {
+                "processing_timestamp": time.time(),
+                "source_type": "local_files",
+                "file_paths": file_paths,
+                "total_files": len(structured_docs),
+                "total_chunks": len(semantic_chunks)
+            },
+            "documents": structured_docs,
+            "semantic_chunks": semantic_chunks
+        }
+
+        # Create output directory if it doesn't exist
+        os.makedirs(os.path.dirname(output_file), exist_ok=True)
+
+        print(f"\n💾 Saving to {output_file}...")
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(output_data, f, indent=2, ensure_ascii=False)
+
+        # Also create a simple text file for compatibility
+        text_file = output_file.replace('.json', '.txt')
+        print(f"💾 Creating text file: {text_file}...")
+
+        with open(text_file, 'w', encoding='utf-8') as f:
+            for chunk in semantic_chunks:
+                f.write(f"{chunk['text']}\n\n{'='*80}\n\n")
+
+        print(f"\n✅ Local file processing complete!")
+        print(f"   📊 Statistics:")
+        print(f"      Files processed: {len(structured_docs)}")
+        print(f"      Semantic chunks: {len(semantic_chunks)}")
+        if semantic_chunks:
+            avg_chunk_size = sum(c['word_count'] for c in semantic_chunks) / len(semantic_chunks)
+            print(f"      Average chunk size: {avg_chunk_size:.0f} words")
+        print(f"   📁 Files created:")
+        print(f"      {output_file} (structured JSON)")
+        print(f"      {text_file} (plain text)")
+
+        return output_data
+
+    def find_html_files(self, directory: str, pattern: str = "*.html") -> List[str]:
+        """Find HTML files in a directory (supports glob patterns)"""
+
+        directory_path = Path(directory)
+        if not directory_path.exists():
+            print(f"❌ Directory not found: {directory}")
+            return []
+
+        # Support both *.html and *.htm
+        html_files = []
+        for ext in ['*.html', '*.htm']:
+            html_files.extend(glob.glob(str(directory_path / ext)))
+
+        # Also search subdirectories if pattern includes **
+        if '**' in pattern:
+            for ext in ['*.html', '*.htm']:
+                html_files.extend(glob.glob(str(directory_path / '**' / ext), recursive=True))
+
+        html_files = sorted(list(set(html_files)))  # Remove duplicates and sort
+        print(f"🔍 Found {len(html_files)} HTML files in {directory}")
+
+        return html_files
 
     def create_semantic_chunks(self, structured_docs: List[Dict],
                              max_chunk_size: int = 1200) -> List[Dict]:
@@ -504,28 +633,150 @@ class WebScraper:
 
         return output_data
 
+    def process_mixed_sources(self, web_urls: List[str] = None, local_files: List[str] = None,
+                             output_file: str = "data/mixed_docs_structured.json",
+                             max_pages: int = 30, same_domain_only: bool = True, max_depth: int = 2) -> Dict:
+        """Process both web URLs and local HTML files in a single operation"""
+
+        print(f"🚀 Processing mixed sources...")
+        print(f"   Web URLs: {len(web_urls) if web_urls else 0}")
+        print(f"   Local files: {len(local_files) if local_files else 0}")
+
+        all_structured_docs = []
+
+        # Process web URLs if provided
+        if web_urls:
+            web_data = self.scrape_website(
+                web_urls, max_pages, f"{output_file}_web_temp.json",
+                same_domain_only, max_depth
+            )
+            all_structured_docs.extend(web_data.get('documents', []))
+
+        # Process local files if provided
+        if local_files:
+            local_data = self.process_local_files(local_files, f"{output_file}_local_temp.json")
+            all_structured_docs.extend(local_data.get('documents', []))
+
+        # Create combined semantic chunks
+        print(f"\n🧠 Creating semantic chunks from {len(all_structured_docs)} total documents...")
+        semantic_chunks = self.create_semantic_chunks(all_structured_docs)
+
+        # Combine metadata
+        combined_output = {
+            "metadata": {
+                "processing_timestamp": time.time(),
+                "source_type": "mixed",
+                "web_urls": web_urls or [],
+                "local_files": local_files or [],
+                "total_documents": len(all_structured_docs),
+                "total_chunks": len(semantic_chunks),
+                "domains": list(set(doc.get("domain", "") for doc in all_structured_docs))
+            },
+            "documents": all_structured_docs,
+            "semantic_chunks": semantic_chunks
+        }
+
+        # Save combined data
+        os.makedirs(os.path.dirname(output_file), exist_ok=True)
+
+        print(f"\n💾 Saving combined data to {output_file}...")
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(combined_output, f, indent=2, ensure_ascii=False)
+
+        # Create text file
+        text_file = output_file.replace('.json', '.txt')
+        with open(text_file, 'w', encoding='utf-8') as f:
+            for chunk in semantic_chunks:
+                f.write(f"{chunk['text']}\n\n{'='*80}\n\n")
+
+        # Clean up temporary files
+        for temp_file in [f"{output_file}_web_temp.json", f"{output_file}_local_temp.json"]:
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
+
+        print(f"\n✅ Mixed processing complete!")
+        print(f"   📊 Statistics:")
+        print(f"      Documents processed: {len(all_structured_docs)}")
+        print(f"      Semantic chunks: {len(semantic_chunks)}")
+        print(f"      Domains: {len(combined_output['metadata']['domains'])}")
+
+        return combined_output
+
 
 def main():
-    """Example usage of the generic web scraper"""
+    """Example usage of the generic web scraper with local and web sources"""
 
-    # Example: Scrape a documentation website
-    scraper = WebScraper()
+    print("🔍 WebScraper Usage Examples\n")
 
-    # You can specify any website here
-    start_urls = [
-        "https://pytorch.org/docs/stable/",  # Example: pytorch docs
-        # Add more starting URLs as needed
+    # Example 1: Process local HTML files
+    print("=" * 50)
+    print("Example 1: Processing Local HTML Files")
+    print("=" * 50)
+
+    scraper_local = WebScraper(local_mode=True)
+
+    # Find HTML files in current directory (example)
+    # html_files = scraper_local.find_html_files(".", "**/*.html")
+
+    # For demonstration, using example paths
+    html_files = [
+        # Add your local HTML file paths here
+        # Example: "/path/to/your/file.html"
     ]
 
-    result = scraper.scrape_website(
+    if html_files:
+        local_result = scraper_local.process_local_files(
+            html_files,
+            output_file="data/local_html_docs.json"
+        )
+        print(f"✅ Processed {len(local_result.get('documents', []))} local HTML files")
+    else:
+        print("⚠️ No HTML files found. Add file paths to html_files list.")
+
+    # Example 2: Web scraping (original functionality)
+    print("\n" + "=" * 50)
+    print("Example 2: Web Scraping")
+    print("=" * 50)
+
+    scraper_web = WebScraper()
+
+    start_urls = [
+        "https://fastapi.tiangolo.com/",  # Example: FastAPI docs
+    ]
+
+    web_result = scraper_web.scrape_website(
         start_urls=start_urls,
-        max_pages=100,  # Limit for testing
-        output_file="data/generic_website_docs.json",
+        max_pages=10,  # Small limit for testing
+        output_file="data/web_docs.json",
         same_domain_only=True,
-        max_depth=2
+        max_depth=1
     )
 
-    return result
+    # Example 3: Mixed processing
+    print("\n" + "=" * 50)
+    print("Example 3: Mixed Sources Processing")
+    print("=" * 50)
+
+    scraper_mixed = WebScraper()
+
+    if html_files:
+        mixed_result = scraper_mixed.process_mixed_sources(
+            web_urls=["https://fastapi.tiangolo.com/"],
+            local_files=html_files[:2],  # Limit local files for demo
+            output_file="data/mixed_sources.json",
+            max_pages=5
+        )
+        print(f"✅ Mixed processing complete with {len(mixed_result.get('documents', []))} total documents")
+    else:
+        print("⚠️ Skipping mixed processing - no local HTML files provided")
+
+    print(f"\n🎉 All examples completed! Check the data/ directory for output files.")
+
+    return {
+        "local_files_processed": len(html_files) if html_files else 0,
+        "web_scraping_completed": True,
+        "mixed_processing": bool(html_files)
+    }
 
 
 if __name__ == "__main__":
