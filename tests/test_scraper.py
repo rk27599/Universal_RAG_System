@@ -41,21 +41,7 @@ class TestImprovedPyTorchScraper(unittest.TestCase):
 
     def test_extract_metadata(self):
         """Test metadata extraction"""
-        test_html = """
-        <html>
-        <head>
-            <title>Test Page - PyTorch</title>
-        </head>
-        <body>
-            <h1>Main Header</h1>
-            <h2>Sub Header</h2>
-            <p>Some content here</p>
-        </body>
-        </html>
-        """
-
-        # This is a basic test - actual implementation would need BeautifulSoup parsing
-        # For now, just test that the method exists and returns expected structure
+        # Test that basic metadata structure is available
         metadata = {
             'title': 'Test Page',
             'headers': ['Main Header', 'Sub Header'],
@@ -167,9 +153,6 @@ class TestScraperIntegration(unittest.TestCase):
     def test_scrape_single_page_if_online(self):
         """Test scraping a single PyTorch documentation page if online"""
         try:
-            # Try to scrape the main tensor documentation page
-            test_url = "https://pytorch.org/docs/stable/tensors.html"
-
             # This would require actual network access
             # For now, just test that the method exists
             self.assertTrue(hasattr(self.scraper, 'scrape_page'))
