@@ -1,15 +1,17 @@
-# Advanced RAG System for PyTorch Documentation
+# Universal RAG System for Any Website
 
-An advanced **Retrieval-Augmented Generation (RAG) system** specifically designed for PyTorch documentation. Features structure-aware web scraping, semantic chunking, enhanced TF-IDF retrieval, and local LLM integration via Ollama.
+An advanced **Retrieval-Augmented Generation (RAG) system** that works with **any website**. Features structure-aware web scraping, semantic chunking, enhanced TF-IDF retrieval, intelligent caching, and local LLM integration via Ollama.
 
 ## 🚀 Features
 
+- **🌍 Universal Compatibility**: Works with **any website** automatically - documentation, blogs, APIs, etc.
 - **🏗️ Structure-Aware Scraping**: Preserves HTML hierarchy (h1, h2, h3) and document structure
-- **🧠 Semantic Chunking**: Respects documentation sections vs random word splits
+- **🧠 Semantic Chunking**: Respects content sections vs random word splits
 - **🔍 Enhanced Retrieval**: High similarity scores (0.6+ typical vs 0.3 legacy systems)
-- **📊 Rich Metadata**: Page titles, section hierarchy, content types
-- **⚡ Performance**: TF-IDF with trigrams, boosted scoring, smart caching
+- **📊 Rich Metadata**: Page titles, section hierarchy, content types, domain information
+- **⚡ Performance**: TF-IDF with trigrams, boosted scoring, intelligent caching system
 - **🤖 Local LLM Integration**: Works with Ollama for complete text generation
+- **🚦 Respectful Crawling**: Honors robots.txt, implements rate limiting, same-domain filtering
 
 ## 📋 Requirements
 
@@ -39,9 +41,9 @@ ollama pull mistral
 
 ## 🚀 Quick Start
 
-### Complete Pipeline Demo
+### Basic Usage Example
 ```bash
-python run_improved_rag_demo.py
+python examples/basic_usage.py
 ```
 
 ### Interactive Jupyter Notebook
@@ -51,20 +53,25 @@ jupyter notebook notebooks/RAG_HTML.ipynb
 jupyter lab notebooks/RAG_HTML.ipynb
 ```
 
-### Custom Usage
+### Custom Usage with Any Website
 ```python
-from src.enhanced_rag_system_v2 import EnhancedRAGSystemV2
+from src.rag_system import RAGSystem
 
 # Initialize system
-rag_system = EnhancedRAGSystemV2()
-rag_system.process_structured_documents("data/pytorch_docs_structured.json")
+rag_system = RAGSystem()
+
+# Scrape and process any website
+success = rag_system.scrape_and_process_website(
+    start_urls=["https://docs.python.org/3/"],
+    max_pages=15,
+    output_file="data/python_docs.json"
+)
 
 # Test retrieval only
-result = rag_system.demo_query("What is tensor parallelism?", top_k=3)
-print(f"Top result: {result['top_results'][0]}")
+result = rag_system.demo_query("How to define functions in Python?", top_k=3)
 
 # Full generation with Ollama (requires ollama serve)
-answer = rag_system.rag_query("What is tensor parallelism?", top_k=3, model="mistral")
+answer = rag_system.rag_query("How to define functions in Python?", top_k=3, model="mistral")
 print(answer)
 ```
 
@@ -74,16 +81,14 @@ print(answer)
 ├── README.md                         # This file
 ├── CLAUDE.md                        # Detailed project documentation
 ├── requirements.txt                 # Python dependencies
-├── run_improved_rag_demo.py         # Complete pipeline demo
-├── test_improvements.py             # Performance testing
 ├── src/                             # Source code
 │   ├── __init__.py
-│   ├── improved_pytorch_scraper.py  # Structure-aware web scraper
-│   └── enhanced_rag_system_v2.py    # Advanced RAG system
-├── data/                            # Data files
-│   ├── pytorch_docs_structured.json # Structured PyTorch docs
-│   ├── pytorch_docs_structured.txt  # Text format compatibility
-│   └── enhanced_rag_v2_cache.pkl    # Processed data cache
+│   ├── web_scraper.py              # Universal web scraper
+│   └── rag_system.py               # Generic RAG system
+├── data/                            # Data files (auto-generated)
+│   ├── *.json                      # Structured website data
+│   ├── *.txt                       # Text format compatibility
+│   └── *_cache.pkl                 # Processed data caches
 ├── notebooks/                       # Jupyter notebooks
 │   └── RAG_HTML.ipynb              # Interactive notebook
 ├── tests/                          # Test files
@@ -91,28 +96,33 @@ print(answer)
 │   ├── test_rag_system.py          # RAG system tests
 │   └── test_scraper.py             # Scraper tests
 └── examples/                       # Usage examples
-    ├── basic_usage.py              # Basic usage demo
+    ├── basic_usage.py              # Basic website demo
     ├── advanced_usage.py           # Advanced features demo
-    └── benchmarking.py             # Performance benchmarking
+    ├── benchmarking.py             # Performance benchmarking
+    └── generic_usage.py            # Generic system demo
 ```
 
 ## 🎯 Core Components
 
-### 1. Structure-Aware Scraper (`src/improved_pytorch_scraper.py`)
+### 1. Universal Web Scraper (`src/web_scraper.py`)
+- Works with **any website** automatically
 - Preserves HTML hierarchy and document structure
-- Extracts clean content while maintaining context
-- Creates semantic chunks based on documentation sections
+- Respects robots.txt and implements polite crawling
+- Creates semantic chunks based on content sections
+- Smart domain filtering and depth control
 
-### 2. Enhanced RAG System (`src/enhanced_rag_system_v2.py`)
+### 2. Generic RAG System (`src/rag_system.py`)
 - Advanced TF-IDF with trigrams and sublinear scaling
-- Boosted scoring for code examples and technical content
-- Rich metadata tracking (page, section, content type)
+- Intelligent caching system for scraped data
+- Boosted scoring for different content types
+- Rich metadata tracking (page, section, content type, domain)
 - Integrates with local Ollama API for text generation
 
 ### 3. Interactive Interface (`notebooks/RAG_HTML.ipynb`)
-- Jupyter notebook for experimentation
+- Jupyter notebook for experimentation with any website
 - Visual exploration of retrieval results
-- Easy testing of different queries
+- Easy testing of different queries and websites
+- Complete pipeline demonstration
 
 ## 📊 Performance
 
@@ -123,14 +133,19 @@ print(answer)
 
 ## 🧪 Testing
 
-Run the performance comparison:
+Run comprehensive benchmarking:
 ```bash
-python test_improvements.py
+python examples/benchmarking.py
 ```
 
 Test specific functionality:
 ```bash
-python -m pytest tests/  # After creating test files
+python -m pytest tests/
+```
+
+Test the generic system:
+```bash
+python test_generic_system.py
 ```
 
 ## 🔧 Configuration
@@ -146,21 +161,33 @@ Adjust retrieval parameters:
 
 ## 📖 Usage Examples
 
-### Basic Retrieval
+### Work with Any Website
 ```python
-# Test retrieval performance
-result = rag_system.demo_query("How do I use DataLoader?", top_k=3)
-for i, doc in enumerate(result['top_results']):
-    print(f"{i+1}. Score: {doc['score']:.3f}")
-    print(f"   Page: {doc['page']}")
-    print(f"   Content: {doc['content'][:200]}...")
+from src.rag_system import RAGSystem
+
+# Initialize system
+rag_system = RAGSystem()
+
+# Scrape different types of websites
+websites = [
+    "https://docs.python.org/3/",      # Documentation
+    "https://fastapi.tiangolo.com/",   # API docs
+    "https://nodejs.org/en/docs/",     # Different tech stack
+    "https://reactjs.org/docs/"        # Frontend framework
+]
+
+for url in websites:
+    success = rag_system.scrape_and_process_website([url], max_pages=10)
+    if success:
+        result = rag_system.demo_query("How to get started?", top_k=3)
+        print(f"Results from {url}: {result}")
 ```
 
-### Full Generation
+### Full Generation with Context
 ```python
-# Generate complete answers
+# Generate complete answers with any website content
 answer = rag_system.rag_query(
-    query="Explain PyTorch tensor operations",
+    query="How to install and set up the framework?",
     top_k=5,
     model="mistral"
 )
@@ -181,6 +208,7 @@ This project is open source. See the LICENSE file for details.
 
 ## 🙏 Acknowledgments
 
-- Built using PyTorch documentation
-- Enhanced with modern RAG techniques
+- Universal design works with any website or documentation
+- Enhanced with modern RAG techniques and intelligent caching
 - Integrates with Ollama for local LLM capabilities
+- Respects website policies and implements ethical web scraping

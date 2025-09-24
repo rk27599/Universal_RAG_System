@@ -11,14 +11,14 @@ from typing import List, Dict
 # Add parent directory to path to import our modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.enhanced_rag_system_v2 import EnhancedRAGSystemV2
+from src.rag_system import RAGSystem
 
 
 class RAGBenchmark:
     """Benchmarking suite for RAG system performance"""
 
     def __init__(self):
-        self.rag_system = EnhancedRAGSystemV2()
+        self.rag_system = RAGSystem()
         self.test_queries = [
             # Technical concept queries
             "tensor operations broadcasting",
@@ -47,7 +47,7 @@ class RAGBenchmark:
         print("🔧 Setting up RAG system for benchmarking...")
 
         start_time = time.time()
-        success = self.rag_system.process_structured_documents("data/pytorch_docs_structured.json")
+        success = self.rag_system.process_structured_documents("data/website_docs.json")
         setup_time = time.time() - start_time
 
         if success:

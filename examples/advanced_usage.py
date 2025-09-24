@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Advanced usage example for the Enhanced RAG System with Ollama integration
+Advanced usage example for the RAG System with Ollama integration
 """
 
 import sys
@@ -10,7 +10,7 @@ import requests
 # Add parent directory to path to import our modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.enhanced_rag_system_v2 import EnhancedRAGSystemV2
+from src.rag_system import RAGSystem
 
 
 def check_ollama_status():
@@ -30,23 +30,31 @@ def check_ollama_status():
 def main():
     """Demonstrate advanced usage with Ollama integration"""
 
-    print("🚀 Enhanced RAG System - Advanced Usage Example")
-    print("=" * 55)
+    print("🚀 RAG System - Advanced Usage with Ollama Integration")
+    print("=" * 60)
 
     # Initialize the RAG system
     print("\n📚 Initializing RAG system...")
-    rag_system = EnhancedRAGSystemV2()
+    rag_system = RAGSystem()
 
-    # Process the structured documentation
-    print("⚙️ Processing structured documents...")
-    success = rag_system.process_structured_documents("data/pytorch_docs_structured.json")
+    # Scrape and process a website (will use cache if available)
+    print("⚙️ Scraping and processing documentation...")
+
+    start_urls = ["https://docs.python.org/3/"]  # Using Python docs as example
+
+    success = rag_system.scrape_and_process_website(
+        start_urls=start_urls,
+        max_pages=15,
+        output_file="data/python_docs_advanced.json",
+        same_domain_only=True,
+        max_depth=2
+    )
 
     if not success:
-        print("❌ Failed to process documents. Make sure pytorch_docs_structured.json exists.")
-        print("   Run: python src/improved_pytorch_scraper.py")
+        print("❌ Failed to scrape and process website.")
         return
 
-    print("✅ Documents processed successfully!")
+    print("✅ Website processed successfully!")
 
     # Check Ollama status
     print("\n🤖 Checking Ollama status...")
@@ -67,16 +75,20 @@ def main():
     # Advanced query examples
     advanced_queries = [
         {
-            "query": "How do I implement custom loss functions in PyTorch?",
-            "context": "neural network training"
+            "query": "How do I create and use Python classes with inheritance?",
+            "context": "object-oriented programming"
         },
         {
-            "query": "What are the best practices for memory management with large tensors?",
-            "context": "performance optimization"
+            "query": "What are the best practices for exception handling in Python?",
+            "context": "error management"
         },
         {
-            "query": "How to use torch.utils.data.DataLoader for efficient batch processing?",
-            "context": "data loading and preprocessing"
+            "query": "How to use Python decorators and context managers effectively?",
+            "context": "advanced Python features"
+        },
+        {
+            "query": "What are Python generators and how do they work?",
+            "context": "memory-efficient iteration"
         }
     ]
 
@@ -92,17 +104,21 @@ def main():
 
         # First, show retrieval results
         print("   \n🔍 Retrieval Results:")
-        result = rag_system.demo_query(query, top_k=5)
+        contexts, metadata = rag_system.retrieve_context(query, top_k=5)
 
-        if 'error' in result:
-            print(f"      ❌ Error: {result['error']}")
+        if not contexts:
+            print("      ❌ No relevant documents found")
             continue
 
-        for j, doc in enumerate(result['top_results'][:3], 1):  # Show top 3
-            print(f"      {j}. Score: {doc['score']:.3f}")
-            print(f"         Page: {doc.get('page', 'Unknown')}")
-            print(f"         Type: {doc.get('content_type', 'N/A')}")
-            print(f"         Content: {doc['content'][:150]}...")
+        for j, (context, meta) in enumerate(zip(contexts[:3], metadata[:3]), 1):  # Show top 3
+            score = meta.get('boosted_score', 0)
+            page = meta.get('page_title', 'Unknown')
+            content_type = meta.get('type', 'N/A')
+
+            print(f"      {j}. Score: {score:.3f}")
+            print(f"         Page: {page}")
+            print(f"         Type: {content_type}")
+            print(f"         Content: {context[:150]}...")
             print()
 
         # If Ollama is available, generate complete answer
