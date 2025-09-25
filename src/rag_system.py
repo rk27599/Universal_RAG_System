@@ -8,6 +8,7 @@ import json
 import pickle
 import os
 import requests
+import time
 from typing import List, Dict, Tuple
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -15,14 +16,18 @@ import numpy as np
 
 try:
     from .web_scraper import WebScraper
+    from .async_web_scraper import AsyncWebScraper, scrape_website_fast, ScrapingConfig
 except ImportError:
     from web_scraper import WebScraper
+    from async_web_scraper import AsyncWebScraper, scrape_website_fast, ScrapingConfig
+
+import asyncio
 
 
 class RAGSystem:
     """Complete RAG system that can work with any website"""
 
-    def __init__(self, chunk_size: int = 1200, overlap: int = 100):
+    def __init__(self, chunk_size: int = 1200, overlap: int = 100, use_async: bool = False):
         self.chunk_size = chunk_size
         self.overlap = overlap
         self.chunks = []
@@ -31,6 +36,7 @@ class RAGSystem:
         self.tfidf_matrix = None
         self.structured_data = None
         self.scraper = WebScraper()
+        self.use_async = use_async
 
     def scrape_and_process_website(self, start_urls: List[str],
                                  max_pages: int = 30,
@@ -97,6 +103,59 @@ class RAGSystem:
             print("❌ Failed to process scraped data")
 
         return success
+
+    async def scrape_and_process_website_async(self, start_urls: List[str],
+                                             max_pages: int = 30,
+                                             output_file: str = "data/website_docs_async.json",
+                                             concurrent_limit: int = 8,
+                                             requests_per_second: float = 10.0,
+                                             use_cache: bool = True) -> bool:
+        """Async version for high-performance scraping"""
+
+        print(f"🚀 RAG: High-Performance Async Scraping...")
+
+        # Check cache first
+        cache_file = output_file.replace('.json', '_cache.pkl')
+
+        if use_cache and os.path.exists(output_file) and os.path.exists(cache_file):
+            print(f"💾 Found cached async data!")
+            success = self.process_structured_documents(output_file)
+            if success:
+                print("✅ Using cached data - ready to query!")
+                return True
+
+        # Perform async scraping
+        start_time = time.time()
+
+        try:
+            results = await scrape_website_fast(
+                start_urls=start_urls,
+                max_pages=max_pages,
+                concurrent_limit=concurrent_limit,
+                requests_per_second=requests_per_second,
+                output_file=output_file
+            )
+
+            duration = time.time() - start_time
+            metadata = results.get("metadata", {})
+
+            print(f"⚡ Async scraping completed in {duration:.2f}s")
+            print(f"📊 Performance: {metadata.get('requests_per_second', 0):.1f} RPS average")
+            print(f"✅ Success rate: {metadata.get('success_rate', 0):.1f}%")
+
+            # Process the scraped data
+            success = self.process_structured_documents(output_file)
+
+            if success:
+                print("✅ Async website scraped and processed successfully!")
+            else:
+                print("❌ Failed to process async scraped data")
+
+            return success
+
+        except Exception as e:
+            print(f"❌ Async scraping failed: {e}")
+            return False
 
     def clear_cache(self, output_file: str = "data/website_docs.json") -> bool:
         """Clear cached data files to force re-scraping"""
