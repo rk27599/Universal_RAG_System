@@ -347,9 +347,11 @@ class AsyncWebScraper:
 
                 # Add new links to queue if we haven't hit the limit
                 if len(self.structured_docs) < self.config.max_pages:
-                    # KEY FIX: Remove 10-link limit, add ALL discovered links
-                    for link in new_links:  # No limit on links per page
+                    limit = self.config.max_pages - len(self.structured_docs)
+                    for link in new_links[:limit]:
                         await self.url_queue.put((link, depth + 1))
+                    if len(self.structured_docs) >= self.config.max_pages:
+                        break  # Prevent further additions by this worker
 
                 self.url_queue.task_done()
 
