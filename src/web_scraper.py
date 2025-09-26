@@ -52,9 +52,7 @@ class WebScraper:
             self.robots_parser.set_url(robots_url)
             self.robots_parser.read()
 
-            print(f"📋 Loaded robots.txt from {robots_url}")
         except Exception as e:
-            print(f"⚠️ Could not load robots.txt: {e}")
             self.robots_parser = None
 
     def can_fetch(self, url: str) -> bool:
@@ -69,7 +67,6 @@ class WebScraper:
                      same_domain_only: bool = True, max_depth: int = 2) -> List[str]:
         """Discover URLs starting from given URLs"""
 
-        print(f"🔍 Discovering URLs from {len(start_urls)} starting points...")
 
         discovered_urls = []
         urls_to_process = [(url, 0) for url in start_urls]  # (url, depth)
@@ -89,7 +86,6 @@ class WebScraper:
 
             # Check robots.txt
             if not self.can_fetch(current_url):
-                print(f"🚫 Blocked by robots.txt: {current_url}")
                 continue
 
             try:
@@ -139,9 +135,7 @@ class WebScraper:
                 time.sleep(1)
 
             except Exception as e:
-                print(f"⚠️ Error processing {current_url}: {e}")
 
-        print(f"   Found {len(discovered_urls)} URLs")
         return discovered_urls
 
     def clean_content(self, soup: BeautifulSoup) -> BeautifulSoup:
@@ -189,7 +183,6 @@ class WebScraper:
     def extract_structured_content(self, url: str, html_content: str = None) -> Optional[Dict]:
         """Extract structured content from web page or local HTML content"""
 
-        print(f"   📄 Processing: {url}")
 
         try:
             if html_content:
@@ -199,7 +192,6 @@ class WebScraper:
                 # Fetch from web (original behavior)
                 response = self.session.get(url, timeout=15)
                 if response.status_code != 200:
-                    print(f"      ❌ Failed: {response.status_code}")
                     return None
                 soup = BeautifulSoup(response.text, 'html.parser')
 
@@ -235,11 +227,9 @@ class WebScraper:
                 "total_sections": len(sections)
             }
 
-            print(f"      ✅ Extracted {len(sections)} sections")
             return doc_structure
 
         except Exception as e:
-            print(f"      ❌ Error: {e}")
             return None
 
     def _extract_title(self, soup: BeautifulSoup, url: str) -> str:
@@ -354,14 +344,11 @@ class WebScraper:
             file_path = Path(file_path).resolve()
 
             if not file_path.exists():
-                print(f"   ❌ File not found: {file_path}")
                 return None
 
             if not file_path.suffix.lower() in ['.html', '.htm']:
-                print(f"   ⚠️ Not an HTML file: {file_path}")
                 return None
 
-            print(f"   📂 Reading local file: {file_path.name}")
 
             with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                 html_content = f.read()
@@ -372,24 +359,18 @@ class WebScraper:
             return self.extract_structured_content(file_url, html_content)
 
         except Exception as e:
-            print(f"   ❌ Error reading {file_path}: {e}")
             return None
 
     def process_local_files(self, file_paths: List[str], output_file: str = "data/local_docs_structured.json") -> Dict:
         """Process multiple local HTML files"""
 
-        print(f"🚀 Processing {len(file_paths)} local HTML files...")
-
         structured_docs = []
 
         for i, file_path in enumerate(file_paths, 1):
-            print(f"\n📂 Processing {i}/{len(file_paths)}: {Path(file_path).name}")
-
             doc_structure = self.extract_from_local_file(file_path)
             if doc_structure:
                 structured_docs.append(doc_structure)
 
-        print(f"\n🧠 Creating semantic chunks from {len(structured_docs)} documents...")
         semantic_chunks = self.create_semantic_chunks(structured_docs)
 
         # Save structured data
@@ -408,28 +389,16 @@ class WebScraper:
         # Create output directory if it doesn't exist
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
-        print(f"\n💾 Saving to {output_file}...")
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(output_data, f, indent=2, ensure_ascii=False)
 
         # Also create a simple text file for compatibility
         text_file = output_file.replace('.json', '.txt')
-        print(f"💾 Creating text file: {text_file}...")
-
         with open(text_file, 'w', encoding='utf-8') as f:
             for chunk in semantic_chunks:
                 f.write(f"{chunk['text']}\n\n{'='*80}\n\n")
 
-        print(f"\n✅ Local file processing complete!")
-        print(f"   📊 Statistics:")
-        print(f"      Files processed: {len(structured_docs)}")
-        print(f"      Semantic chunks: {len(semantic_chunks)}")
-        if semantic_chunks:
-            avg_chunk_size = sum(c['word_count'] for c in semantic_chunks) / len(semantic_chunks)
-            print(f"      Average chunk size: {avg_chunk_size:.0f} words")
-        print(f"   📁 Files created:")
-        print(f"      {output_file} (structured JSON)")
-        print(f"      {text_file} (plain text)")
+        print(f"✅ Local file processing complete! Files: {len(structured_docs)}, Chunks: {len(semantic_chunks)}")
 
         return output_data
 
@@ -438,7 +407,6 @@ class WebScraper:
 
         directory_path = Path(directory)
         if not directory_path.exists():
-            print(f"❌ Directory not found: {directory}")
             return []
 
         # Support both *.html and *.htm
@@ -452,7 +420,6 @@ class WebScraper:
                 html_files.extend(glob.glob(str(directory_path / '**' / ext), recursive=True))
 
         html_files = sorted(list(set(html_files)))  # Remove duplicates and sort
-        print(f"🔍 Found {len(html_files)} HTML files in {directory}")
 
         return html_files
 
@@ -460,7 +427,6 @@ class WebScraper:
                              max_chunk_size: int = 1200) -> List[Dict]:
         """Create semantically meaningful chunks from structured documents"""
 
-        print(f"🧠 Creating semantic chunks...")
 
         semantic_chunks = []
 
@@ -557,7 +523,6 @@ class WebScraper:
                             "part_number": chunk_num if chunk_num > 1 else 1
                         })
 
-        print(f"   ✅ Created {len(semantic_chunks)} semantic chunks")
         return semantic_chunks
 
     def scrape_website(self, start_urls: List[str], max_pages: int = 30,
@@ -565,11 +530,7 @@ class WebScraper:
                       same_domain_only: bool = True, max_depth: int = 2) -> Dict:
         """Main method to scrape any website and create structured data"""
 
-        print(f"🚀 Starting generic website scraping...")
-        print(f"   Starting URLs: {len(start_urls)}")
-        print(f"   Max pages: {max_pages}")
-        print(f"   Same domain only: {same_domain_only}")
-        print(f"   Max depth: {max_depth}")
+        print(f"🚀 Scraping {len(start_urls)} URLs (max {max_pages} pages)")
 
         # Discover URLs
         urls_to_scrape = self.discover_urls(
@@ -579,8 +540,6 @@ class WebScraper:
         # Scrape each URL
         structured_docs = []
         for i, url in enumerate(urls_to_scrape, 1):
-            print(f"\n📄 Processing {i}/{len(urls_to_scrape)}: {urlparse(url).path}")
-
             doc_structure = self.extract_structured_content(url)
             if doc_structure:
                 structured_docs.append(doc_structure)
@@ -588,7 +547,6 @@ class WebScraper:
             # Be respectful - delay between requests
             time.sleep(1)
 
-        print(f"\n🧠 Creating semantic chunks from {len(structured_docs)} documents...")
         semantic_chunks = self.create_semantic_chunks(structured_docs)
 
         # Save structured data
@@ -607,29 +565,16 @@ class WebScraper:
         # Create output directory if it doesn't exist
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
-        print(f"\n💾 Saving to {output_file}...")
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(output_data, f, indent=2, ensure_ascii=False)
 
         # Also create a simple text file for compatibility
         text_file = output_file.replace('.json', '.txt')
-        print(f"💾 Creating text file: {text_file}...")
-
         with open(text_file, 'w', encoding='utf-8') as f:
             for chunk in semantic_chunks:
                 f.write(f"{chunk['text']}\n\n{'='*80}\n\n")
 
-        print(f"\n✅ Scraping complete!")
-        print(f"   📊 Statistics:")
-        print(f"      Pages processed: {len(structured_docs)}")
-        print(f"      Semantic chunks: {len(semantic_chunks)}")
-        if semantic_chunks:
-            avg_chunk_size = sum(c['word_count'] for c in semantic_chunks) / len(semantic_chunks)
-            print(f"      Average chunk size: {avg_chunk_size:.0f} words")
-        print(f"      Domains covered: {len(output_data['metadata']['domains'])}")
-        print(f"   📁 Files created:")
-        print(f"      {output_file} (structured JSON)")
-        print(f"      {text_file} (plain text)")
+        print(f"✅ Scraping complete! Pages: {len(structured_docs)}, Chunks: {len(semantic_chunks)}")
 
         return output_data
 
@@ -638,9 +583,6 @@ class WebScraper:
                              max_pages: int = 30, same_domain_only: bool = True, max_depth: int = 2) -> Dict:
         """Process both web URLs and local HTML files in a single operation"""
 
-        print(f"🚀 Processing mixed sources...")
-        print(f"   Web URLs: {len(web_urls) if web_urls else 0}")
-        print(f"   Local files: {len(local_files) if local_files else 0}")
 
         all_structured_docs = []
 
@@ -658,7 +600,6 @@ class WebScraper:
             all_structured_docs.extend(local_data.get('documents', []))
 
         # Create combined semantic chunks
-        print(f"\n🧠 Creating semantic chunks from {len(all_structured_docs)} total documents...")
         semantic_chunks = self.create_semantic_chunks(all_structured_docs)
 
         # Combine metadata
@@ -679,7 +620,6 @@ class WebScraper:
         # Save combined data
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
-        print(f"\n💾 Saving combined data to {output_file}...")
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(combined_output, f, indent=2, ensure_ascii=False)
 
@@ -694,11 +634,7 @@ class WebScraper:
             if os.path.exists(temp_file):
                 os.remove(temp_file)
 
-        print(f"\n✅ Mixed processing complete!")
-        print(f"   📊 Statistics:")
-        print(f"      Documents processed: {len(all_structured_docs)}")
-        print(f"      Semantic chunks: {len(semantic_chunks)}")
-        print(f"      Domains: {len(combined_output['metadata']['domains'])}")
+        print(f"✅ Mixed processing complete! Docs: {len(all_structured_docs)}, Chunks: {len(semantic_chunks)}")
 
         return combined_output
 

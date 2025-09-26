@@ -13,7 +13,7 @@ from pathlib import Path
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.async_web_scraper import AsyncWebScraper, ScrapingConfig, process_local_files_fast
+from src.async_web_scraper import AsyncWebScraper, ScrapingConfig
 from src.rag_system import RAGSystem
 
 
@@ -261,7 +261,7 @@ async def test_batch_file_processing():
         start_time = time.time()
 
         # Test using convenience function
-        results = await process_local_files_fast(
+        results = await AsyncWebScraper.process_local_files_fast(
             file_paths=test_files,
             output_file="data/test_async_local.json",
             concurrent_limit=4
@@ -424,7 +424,7 @@ async def test_performance_comparison():
         print("\n--- Async Processing ---")
 
         async_start = time.time()
-        async_result =  process_local_files_fast(
+        async_result =  AsyncWebScraper.process_local_files_fast(
             file_paths=test_files,
             output_file="data/test_async_comparison.json",
             concurrent_limit=4

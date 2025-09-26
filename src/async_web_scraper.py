@@ -348,7 +348,6 @@ class AsyncWebScraper:
             }
 
         except Exception as e:
-            print(f"Content extraction error for {url}: {e}")
             return None
 
     async def _process_url(self, url: str, depth: int) -> Tuple[Optional[Dict], List[str]]:

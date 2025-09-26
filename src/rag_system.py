@@ -46,40 +46,26 @@ class RAGSystem:
                                  use_cache: bool = True) -> bool:
         """Scrape a website and process it for RAG"""
 
-        print(f"🚀 RAG: Scraping and processing website...")
-
         # Check if we already have cached data and processing cache
         cache_file = output_file.replace('.json', '_cache.pkl')
 
         if use_cache and os.path.exists(output_file) and os.path.exists(cache_file):
-            print(f"💾 Found cached data and processed index!")
-            print(f"📄 Data file: {output_file}")
-            print(f"🧠 Processed cache: {cache_file}")
-
             # Load the processed data directly
             success = self.process_structured_documents(output_file)
 
             if success:
                 print("✅ Using cached data - ready to query!")
                 return True
-            else:
-                print("⚠️ Cache corrupted, will re-scrape...")
 
         elif use_cache and os.path.exists(output_file):
-            print(f"📄 Found scraped data file: {output_file}")
-            print("🧠 Processing existing data...")
-
             # Process existing scraped data
             success = self.process_structured_documents(output_file)
 
             if success:
                 print("✅ Existing data processed successfully!")
                 return True
-            else:
-                print("⚠️ Failed to process existing data, will re-scrape...")
 
         # If we get here, we need to scrape
-        print(f"🌐 Scraping website from: {', '.join(start_urls)}")
 
         # Scrape the website
         scraping_result = self.scraper.scrape_website(
@@ -91,7 +77,6 @@ class RAGSystem:
         )
 
         if not scraping_result:
-            print("❌ Failed to scrape website")
             return False
 
         # Process the newly scraped data
@@ -99,8 +84,6 @@ class RAGSystem:
 
         if success:
             print("✅ Website scraped and processed successfully!")
-        else:
-            print("❌ Failed to process scraped data")
 
         return success
 
@@ -110,13 +93,10 @@ class RAGSystem:
                                       use_cache: bool = True) -> bool:
         """Process local HTML files asynchronously for RAG"""
 
-        print(f"🚀 RAG: High-Performance Async Local File Processing...")
-
         # Check cache first
         cache_file = output_file.replace('.json', '_cache.pkl')
 
         if use_cache and os.path.exists(output_file) and os.path.exists(cache_file):
-            print(f"💾 Found cached local file data!")
             success = self.process_structured_documents(output_file)
             if success:
                 print("✅ Using cached data - ready to query!")
@@ -137,22 +117,15 @@ class RAGSystem:
             duration = time.time() - start_time
             metadata = results.get("metadata", {})
 
-            print(f"⚡ Async local file processing completed in {duration:.2f}s")
-            print(f"📊 Performance: {metadata.get('files_per_second', 0):.1f} files/sec")
-            print(f"✅ Success rate: {metadata.get('total_files', 0) - metadata.get('failed_files', 0)}/{metadata.get('total_files', 0)} files")
-
             # Process the data for RAG
             success = self.process_structured_documents(output_file)
 
             if success:
                 print("✅ Async local files processed and ready for RAG!")
-            else:
-                print("❌ Failed to process local file data for RAG")
 
             return success
 
         except Exception as e:
-            print(f"❌ Async local file processing failed: {e}")
             return False
 
     async def scrape_and_process_website_async(self, start_urls: List[str],
@@ -163,13 +136,10 @@ class RAGSystem:
                                              use_cache: bool = True) -> bool:
         """Async version for high-performance scraping"""
 
-        print(f"🚀 RAG: High-Performance Async Scraping...")
-
         # Check cache first
         cache_file = output_file.replace('.json', '_cache.pkl')
 
         if use_cache and os.path.exists(output_file) and os.path.exists(cache_file):
-            print(f"💾 Found cached async data!")
             success = self.process_structured_documents(output_file)
             if success:
                 print("✅ Using cached data - ready to query!")
@@ -190,22 +160,15 @@ class RAGSystem:
             duration = time.time() - start_time
             metadata = results.get("metadata", {})
 
-            print(f"⚡ Async scraping completed in {duration:.2f}s")
-            print(f"📊 Performance: {metadata.get('requests_per_second', 0):.1f} RPS average")
-            print(f"✅ Success rate: {metadata.get('success_rate', 0):.1f}%")
-
             # Process the scraped data
             success = self.process_structured_documents(output_file)
 
             if success:
                 print("✅ Async website scraped and processed successfully!")
-            else:
-                print("❌ Failed to process async scraped data")
 
             return success
 
         except Exception as e:
-            print(f"❌ Async scraping failed: {e}")
             return False
 
     async def process_mixed_sources_async(self, web_urls: List[str] = None,
@@ -216,15 +179,10 @@ class RAGSystem:
                                         use_cache: bool = True) -> bool:
         """Process both web URLs and local HTML files asynchronously in a single operation"""
 
-        print(f"🚀 RAG: High-Performance Mixed Async Processing...")
-        print(f"   Web URLs: {len(web_urls) if web_urls else 0}")
-        print(f"   Local files: {len(local_files) if local_files else 0}")
-
         # Check cache first
         cache_file = output_file.replace('.json', '_cache.pkl')
 
         if use_cache and os.path.exists(output_file) and os.path.exists(cache_file):
-            print(f"💾 Found cached mixed data!")
             success = self.process_structured_documents(output_file)
             if success:
                 print("✅ Using cached data - ready to query!")
@@ -236,7 +194,6 @@ class RAGSystem:
         try:
             # Process web URLs if provided
             if web_urls:
-                print(f"🌐 Processing {len(web_urls)} web URLs asynchronously...")
                 web_success = await self.scrape_and_process_website_async(
                     start_urls=web_urls,
                     max_pages=max_pages,
@@ -250,13 +207,10 @@ class RAGSystem:
                     with open(f"{output_file}_web_temp.json", 'r') as f:
                         web_data = json.load(f)
                     all_structured_docs.extend(web_data.get('documents', []))
-                    print(f"✅ Web processing complete: {len(web_data.get('documents', []))} documents")
                 else:
-                    print("⚠️  Web processing failed, continuing with local files only")
 
             # Process local files if provided
             if local_files:
-                print(f"📂 Processing {len(local_files)} local files asynchronously...")
                 local_success = await self.process_local_files_async(
                     file_paths=local_files,
                     output_file=f"{output_file}_local_temp.json",
@@ -269,16 +223,12 @@ class RAGSystem:
                     with open(f"{output_file}_local_temp.json", 'r') as f:
                         local_data = json.load(f)
                     all_structured_docs.extend(local_data.get('documents', []))
-                    print(f"✅ Local processing complete: {len(local_data.get('documents', []))} documents")
                 else:
-                    print("⚠️  Local file processing failed")
 
             if not all_structured_docs:
-                print("❌ No documents were successfully processed")
                 return False
 
             # Create combined semantic chunks using sync scraper method
-            print(f"🧠 Creating semantic chunks from {len(all_structured_docs)} total documents...")
             from .web_scraper import WebScraper
             scraper = WebScraper()
             semantic_chunks = scraper.create_semantic_chunks(all_structured_docs)
@@ -302,7 +252,6 @@ class RAGSystem:
             # Save combined data
             os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
-            print(f"💾 Saving combined data to {output_file}...")
             with open(output_file, 'w', encoding='utf-8') as f:
                 json.dump(combined_output, f, indent=2, ensure_ascii=False)
 
@@ -320,22 +269,12 @@ class RAGSystem:
             # Process the combined data for RAG
             success = self.process_structured_documents(output_file)
 
-            duration = time.time() - start_time
-
             if success:
-                print(f"✅ Mixed async processing complete in {duration:.1f}s!")
-                print(f"   📊 Statistics:")
-                print(f"      Documents processed: {len(all_structured_docs)}")
-                print(f"      Semantic chunks: {len(semantic_chunks)}")
-                print(f"      Domains: {len(combined_output['metadata']['domains'])}")
-                print(f"      Processing rate: {len(all_structured_docs)/duration:.1f} docs/sec")
-            else:
-                print("❌ Failed to process mixed data for RAG")
+                print(f"✅ Mixed async processing complete! Docs: {len(all_structured_docs)}, Chunks: {len(semantic_chunks)}")
 
             return success
 
         except Exception as e:
-            print(f"❌ Mixed async processing failed: {e}")
             return False
 
     def clear_cache(self, output_file: str = "data/website_docs.json") -> bool:
@@ -352,33 +291,26 @@ class RAGSystem:
                     os.remove(file_path)
                     files_removed.append(file_path)
                 except Exception as e:
-                    print(f"⚠️ Could not remove {file_path}: {e}")
 
         if files_removed:
-            print(f"🗑️ Cleared cache files: {', '.join(files_removed)}")
             return True
         else:
-            print("📄 No cache files found to remove")
             return False
 
     def load_structured_data(self, file_path: str) -> bool:
         """Load structured data from JSON file"""
 
         if not os.path.exists(file_path):
-            print(f"❌ Structured data file not found: {file_path}")
             return False
 
         try:
-            print(f"📚 Loading structured data from {file_path}...")
             with open(file_path, 'r', encoding='utf-8') as f:
                 self.structured_data = json.load(f)
 
             semantic_chunks = self.structured_data.get('semantic_chunks', [])
-            print(f"   ✅ Loaded {len(semantic_chunks)} semantic chunks")
             return True
 
         except Exception as e:
-            print(f"❌ Error loading structured data: {e}")
             return False
 
     def process_structured_documents(self, file_path: str = None) -> bool:
@@ -395,7 +327,6 @@ class RAGSystem:
         semantic_chunks = self.structured_data.get('semantic_chunks', [])
 
         if not semantic_chunks:
-            print("❌ No semantic chunks found in data")
             return False
 
         # Check for cached processed data
@@ -403,7 +334,6 @@ class RAGSystem:
 
         if os.path.exists(cache_file):
             try:
-                print("✅ Loading cached processed data...")
                 with open(cache_file, 'rb') as f:
                     cache_data = pickle.load(f)
 
@@ -412,14 +342,11 @@ class RAGSystem:
                 self.vectorizer = cache_data['vectorizer']
                 self.tfidf_matrix = cache_data['tfidf_matrix']
 
-                print(f"   Loaded {len(self.chunks)} chunks from cache")
                 return True
 
             except Exception as e:
-                print(f"⚠️ Cache loading failed: {e}, rebuilding...")
 
         # Process chunks
-        print("🧠 Processing semantic chunks for RAG...")
 
         self.chunks = []
         self.chunk_metadata = []
@@ -447,11 +374,9 @@ class RAGSystem:
             self.chunk_metadata.append(metadata)
 
         if not self.chunks:
-            print("❌ No valid chunks found")
             return False
 
         # Build TF-IDF vectorizer and matrix
-        print("🔧 Building TF-IDF index...")
 
         # Enhanced TF-IDF configuration
         # Adjust parameters based on corpus size
@@ -479,8 +404,6 @@ class RAGSystem:
         # Fit and transform
         self.tfidf_matrix = self.vectorizer.fit_transform(self.chunks)
 
-        print(f"   ✅ Processed {len(self.chunks)} chunks")
-        print(f"   📊 TF-IDF matrix shape: {self.tfidf_matrix.shape}")
 
         # Cache the processed data
         try:
@@ -494,10 +417,8 @@ class RAGSystem:
             with open(cache_file, 'wb') as f:
                 pickle.dump(cache_data, f)
 
-            print(f"💾 Cached processed data to {cache_file}")
 
         except Exception as e:
-            print(f"⚠️ Failed to cache data: {e}")
 
         return True
 
