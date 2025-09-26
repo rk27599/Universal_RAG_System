@@ -46,6 +46,25 @@ python examples/benchmarking.py
 python test_generic_system.py
 ```
 
+### Local File Processing
+```bash
+# Process local HTML files with async performance
+python -c "
+import asyncio
+from src.async_web_scraper import AsyncWebScraper
+
+async def main():
+    results = await AsyncWebScraper.process_local_files_fast(
+        file_paths=['data/temp.html', 'data/temp2.html'],
+        output_file='data/local_docs.json',
+        concurrent_limit=4
+    )
+    print(f'Processed {results[\"metadata\"][\"total_files\"]} files')
+
+asyncio.run(main())
+"
+```
+
 ### Running the Interactive Notebook
 ```bash
 jupyter notebook notebooks/RAG_HTML.ipynb
@@ -86,13 +105,44 @@ result = rag_system.demo_query("What are Python data types?", top_k=3)
 answer = rag_system.rag_query("What are Python data types?", top_k=3, model="mistral")
 ```
 
+### Local File Processing Usage:
+```python
+import asyncio
+from src.async_web_scraper import AsyncWebScraper
+
+# Process local HTML files with high performance
+async def process_local_files():
+    results = await AsyncWebScraper.process_local_files_fast(
+        file_paths=["data/temp.html", "data/temp2.html"],
+        output_file="data/local_docs.json",
+        concurrent_limit=4
+    )
+
+    print(f"✅ Processed {results['metadata']['total_files']} files")
+    print(f"📊 Created {results['metadata']['total_chunks']} chunks")
+
+    return results
+
+# Run local file processing
+results = asyncio.run(process_local_files())
+
+# Load into RAG system
+rag_system = RAGSystem()
+rag_system.load_data("data/local_docs.json")
+
+# Query local documentation
+result = rag_system.demo_query("specific topic from local docs", top_k=3)
+```
+
 ## Key Features
 
 - **🌐 Universal Web Scraping**: Works with any website automatically
+- **📂 Local File Processing**: High-performance async processing of local HTML files
 - **🏗️ Structure-Aware**: Preserves document hierarchy and context
 - **🧠 Semantic Chunking**: Respects website sections vs random word splits
 - **🔍 Enhanced Retrieval**: High similarity scores with intelligent boosting
 - **📊 Rich Metadata**: Page titles, section hierarchy, content types, domains
+- **🔄 Mixed Source Processing**: Combines web scraping + local files seamlessly
 - **⚡ Performance**: TF-IDF with trigrams, boosted scoring, smart caching
 - **🤖 Ethics**: Respects robots.txt and implements polite crawling
 
@@ -122,6 +172,7 @@ data/                       # Generated data directory
 
 ## Usage Patterns
 
+### Quick Start with Web Content
 ```python
 # Quick start with any website:
 python examples/basic_usage.py
@@ -136,6 +187,77 @@ result = rag_system.demo_query("Your question here", top_k=3)
 
 # Generate full answers with Ollama:
 answer = rag_system.rag_query("Your question here", top_k=3)
+```
+
+### Local File Processing Patterns
+```python
+# High-performance local file processing
+import asyncio
+from src.async_web_scraper import AsyncWebScraper
+
+# Pattern 1: Static method for simple usage
+results = await AsyncWebScraper.process_local_files_fast(
+    file_paths=["docs/guide.html", "docs/api.html"],
+    output_file="data/local_docs.json",
+    concurrent_limit=6
+)
+
+# Pattern 2: Instance method for advanced control
+async with AsyncWebScraper() as scraper:
+    html_files = scraper.find_html_files("./documentation", "**/*.html")
+    results = await scraper.process_local_files_async(
+        file_paths=html_files,
+        output_file="data/comprehensive_docs.json"
+    )
+
+# Pattern 3: Mixed source processing
+from src.web_scraper import WebScraper
+scraper = WebScraper()
+results = scraper.process_mixed_sources(
+    web_urls=["https://docs.example.com/"],
+    local_files=["./internal/custom-docs.html"],
+    output_file="data/mixed_knowledge_base.json"
+)
+```
+
+### Integration Patterns
+```python
+# Pattern 1: Async pipeline with RAG
+async def async_knowledge_pipeline():
+    # Process sources
+    results = await AsyncWebScraper.process_local_files_fast(
+        file_paths=["docs/*.html"],
+        output_file="data/knowledge.json"
+    )
+
+    # Load into RAG
+    rag = RAGSystem()
+    rag.load_data("data/knowledge.json")
+
+    # Query immediately
+    return rag.demo_query("your question", top_k=5)
+
+# Pattern 2: Batch processing multiple directories
+async def batch_process_documentation():
+    directories = ["./api_docs", "./user_guides", "./tutorials"]
+
+    for i, doc_dir in enumerate(directories):
+        results = await AsyncWebScraper.process_local_files_fast(
+            file_paths=AsyncWebScraper().find_html_files(doc_dir, "**/*.html"),
+            output_file=f"data/docs_batch_{i}.json"
+        )
+        print(f"Processed {doc_dir}: {results['metadata']['total_files']} files")
+
+# Pattern 3: Real-time processing pipeline
+def setup_comprehensive_rag():
+    rag = RAGSystem()
+
+    # Load multiple processed sources
+    for data_file in ["data/web_docs.json", "data/local_docs.json", "data/mixed_docs.json"]:
+        if os.path.exists(data_file):
+            rag.load_data(data_file)
+
+    return rag
 ```
 
 ## Performance Expectations

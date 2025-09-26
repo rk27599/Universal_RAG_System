@@ -674,6 +674,29 @@ class AsyncWebScraper:
         """Async context manager exit"""
         await self.close()
 
+    @staticmethod
+    async def process_local_files_fast(file_paths: List[str],
+                                     output_file: str = "data/fast_local_docs.json",
+                                     concurrent_limit: int = 6) -> Dict:
+        """
+        High-level async local file processing function
+
+        Args:
+            file_paths: List of HTML file paths to process
+            output_file: Output file path
+            concurrent_limit: Number of files to process concurrently
+
+        Returns:
+            Dictionary with processing results and metadata
+        """
+        config = ScrapingConfig(
+            concurrent_limit=concurrent_limit,
+            requests_per_second=20.0  # Not relevant for local files, but needed for config
+        )
+
+        async with AsyncWebScraper(config) as scraper:
+            results = await scraper.process_local_files_async(file_paths, output_file)
+            return results
 
     def find_html_files(self, directory: str, pattern: str = "*.html") -> List[str]:
         """Find HTML files in a directory (supports glob patterns)"""
@@ -728,30 +751,6 @@ async def scrape_website_fast(start_urls: List[str],
     async with AsyncWebScraper(config) as scraper:
         results = await scraper.scrape_website_async(start_urls)
         await scraper.save_results_async(results, output_file)
-        return results
-
-
-async def process_local_files_fast(file_paths: List[str],
-                                 output_file: str = "data/fast_local_docs.json",
-                                 concurrent_limit: int = 6) -> Dict:
-    """
-    High-level async local file processing function
-
-    Args:
-        file_paths: List of HTML file paths to process
-        output_file: Output file path
-        concurrent_limit: Number of files to process concurrently
-
-    Returns:
-        Dictionary with processing results and metadata
-    """
-    config = ScrapingConfig(
-        concurrent_limit=concurrent_limit,
-        requests_per_second=20.0  # Not relevant for local files, but needed for config
-    )
-
-    async with AsyncWebScraper(config) as scraper:
-        results = await scraper.process_local_files_async(file_paths, output_file, concurrent_limit)
         return results
 
 

@@ -5,11 +5,13 @@ An advanced **Retrieval-Augmented Generation (RAG) system** that works with **an
 ## 🚀 Features
 
 - **🌍 Universal Compatibility**: Works with **any website** automatically - documentation, blogs, APIs, etc.
+- **📂 Local File Processing**: Process HTML files directly with async performance
 - **🏗️ Structure-Aware Scraping**: Preserves HTML hierarchy (h1, h2, h3) and document structure
 - **🧠 Semantic Chunking**: Respects content sections vs random word splits
 - **🔍 Enhanced Retrieval**: High similarity scores (0.6+ typical vs 0.3 legacy systems)
 - **📊 Rich Metadata**: Page titles, section hierarchy, content types, domain information
 - **⚡ Dual Scraper Support**: Both sync (reliable) and async (3-5x faster) scrapers
+- **🔄 Mixed Source Processing**: Combine web scraping + local files in single pipeline
 - **💾 Smart Caching**: Content-based caching with 40-60% hit rates
 - **🚀 High Performance**: Concurrent processing with configurable limits
 - **🤖 Local LLM Integration**: Works with Ollama for complete text generation
@@ -90,17 +92,65 @@ async def fast_scrape():
         requests_per_second=8.0
     )
 
-    scraper = AsyncWebScraper(config)
-    success, metrics = await scraper.scrape_website([
-        "https://docs.python.org/3/"
-    ])
+    async with AsyncWebScraper(config) as scraper:
+        results = await scraper.scrape_website_async([
+            "https://docs.python.org/3/"
+        ])
 
-    print(f"✅ Processed {metrics.urls_processed} pages")
-    print(f"⚡ Total time: {metrics.elapsed_time:.1f}s")
-    print(f"📊 Cache hits: {metrics.cache_hits}")
+        print(f"✅ Processed {len(results['documents'])} pages")
+        print(f"📊 Generated {len(results['semantic_chunks'])} chunks")
 
 # Run async scraping
 success = asyncio.run(fast_scrape())
+```
+
+### Local File Processing
+```python
+import asyncio
+from src.async_web_scraper import AsyncWebScraper
+
+# Process local HTML files with high performance
+async def process_local_docs():
+    # Using the new static method for easy access
+    results = await AsyncWebScraper.process_local_files_fast(
+        file_paths=[
+            "./docs/user-guide.html",
+            "./docs/api-reference.html",
+            "./docs/tutorials.html"
+        ],
+        output_file="data/local_documentation.json",
+        concurrent_limit=4
+    )
+
+    metadata = results["metadata"]
+    print(f"✅ Processed {metadata['total_files']} local files")
+    print(f"📊 Created {metadata['total_chunks']} semantic chunks")
+    print(f"⚡ Processing rate: {metadata['files_per_second']:.1f} files/sec")
+
+    return results
+
+# Process local documentation
+results = asyncio.run(process_local_docs())
+```
+
+### Mixed Source Processing
+```python
+from src.web_scraper import WebScraper
+
+# Process both web content and local files together
+scraper = WebScraper()
+
+results = scraper.process_mixed_sources(
+    web_urls=["https://docs.python.org/3/tutorial/"],
+    local_files=["./docs/custom-guide.html", "./docs/internal-api.html"],
+    output_file="data/comprehensive_docs.json",
+    max_pages=20
+)
+
+print(f"📊 Mixed Processing Results:")
+print(f"  Total documents: {results['metadata']['total_documents']}")
+print(f"  Semantic chunks: {results['metadata']['total_chunks']}")
+print(f"  Sources: Web + Local files")
 ```
 
 ## 📁 Project Structure
@@ -194,6 +244,30 @@ Adjust retrieval parameters:
 
 ## 📖 Usage Examples
 
+### Local Documentation Processing
+```python
+import asyncio
+from src.async_web_scraper import AsyncWebScraper
+
+async def process_local_documentation():
+    # Find HTML files in your documentation directory
+    scraper = AsyncWebScraper()
+    html_files = scraper.find_html_files("./documentation", "**/*.html")
+
+    # Process with high-performance async method
+    results = await AsyncWebScraper.process_local_files_fast(
+        file_paths=html_files,
+        output_file="data/local_docs.json",
+        concurrent_limit=6  # Adjust based on your system
+    )
+
+    print(f"✅ Processed {results['metadata']['total_files']} files")
+    print(f"📊 Created {results['metadata']['total_chunks']} chunks")
+
+# Run local processing
+asyncio.run(process_local_documentation())
+```
+
 ### Work with Any Website
 ```python
 from src.rag_system import RAGSystem
@@ -214,6 +288,79 @@ for url in websites:
     if success:
         result = rag_system.demo_query("How to get started?", top_k=3)
         print(f"Results from {url}: {result}")
+```
+
+### Comprehensive Knowledge Base (Web + Local)
+```python
+from src.web_scraper import WebScraper
+
+# Create comprehensive knowledge base from multiple sources
+scraper = WebScraper()
+
+# Process mixed sources in one operation
+results = scraper.process_mixed_sources(
+    web_urls=[
+        "https://docs.python.org/3/tutorial/",
+        "https://fastapi.tiangolo.com/"
+    ],
+    local_files=[
+        "./docs/internal-guide.html",
+        "./docs/custom-apis.html",
+        "./docs/deployment.html"
+    ],
+    output_file="data/comprehensive_kb.json",
+    max_pages=30
+)
+
+# Load into RAG system for querying
+from src.rag_system import RAGSystem
+rag = RAGSystem()
+rag.load_data("data/comprehensive_kb.json")
+
+# Query across all sources
+answer = rag.demo_query("Deployment and configuration best practices", top_k=5)
+print(answer)
+```
+
+### High-Performance Async Pipeline
+```python
+import asyncio
+from src.async_web_scraper import AsyncWebScraper, ScrapingConfig
+from src.rag_system import RAGSystem
+
+async def build_fast_knowledge_base():
+    # Configure for maximum performance
+    config = ScrapingConfig(
+        concurrent_limit=8,
+        max_pages=100,
+        requests_per_second=12.0
+    )
+
+    # Process multiple sources concurrently
+    tasks = []
+
+    # Web scraping task
+    async with AsyncWebScraper(config) as scraper:
+        web_task = scraper.scrape_website_async([
+            "https://docs.python.org/3/"
+        ])
+        tasks.append(web_task)
+
+    # Local file processing task (can run in parallel)
+    local_task = AsyncWebScraper.process_local_files_fast(
+        file_paths=["./docs/guide1.html", "./docs/guide2.html"],
+        concurrent_limit=6
+    )
+    tasks.append(local_task)
+
+    # Execute all tasks concurrently
+    results = await asyncio.gather(*tasks)
+
+    print("✅ All processing completed!")
+    return results
+
+# Build knowledge base fast
+results = asyncio.run(build_fast_knowledge_base())
 ```
 
 ### Full Generation with Context

@@ -205,6 +205,408 @@ else:
     print("❌ Failed to load data")
 ```
 
+## Async Processing Methods
+
+### scrape_and_process_website_async()
+
+```python
+async def scrape_and_process_website_async(
+    self,
+    start_urls: List[str],
+    max_pages: int = 30,
+    output_file: str = "data/website_docs_async.json",
+    same_domain_only: bool = True,
+    max_depth: int = 2,
+    concurrent_limit: int = 6,
+    requests_per_second: float = 8.0
+) -> bool
+```
+
+Asynchronous version of website scraping and processing with high performance.
+
+**Parameters:**
+- `start_urls` (List[str]): List of URLs to start scraping from
+- `max_pages` (int, optional): Maximum number of pages to scrape. Defaults to 30.
+- `output_file` (str, optional): Output file path. Defaults to "data/website_docs_async.json".
+- `same_domain_only` (bool, optional): Stay within the starting domain. Defaults to True.
+- `max_depth` (int, optional): Maximum crawling depth. Defaults to 2.
+- `concurrent_limit` (int, optional): Number of concurrent requests. Defaults to 6.
+- `requests_per_second` (float, optional): Rate limiting. Defaults to 8.0.
+
+**Returns:**
+- `bool`: True if scraping was successful, False otherwise
+
+**Example:**
+```python
+import asyncio
+
+async def async_scraping_pipeline():
+    rag = RAGSystem(use_async=True)
+
+    # High-performance async scraping
+    success = await rag.scrape_and_process_website_async(
+        start_urls=["https://docs.python.org/3/"],
+        max_pages=50,
+        concurrent_limit=8,
+        requests_per_second=10.0,
+        output_file="data/python_docs_async.json"
+    )
+
+    if success:
+        print("✅ Async scraping completed successfully!")
+
+        # Test queries immediately
+        result = rag.demo_query("Python data types", top_k=3)
+        best_score = result['chunks'][0]['score'] if result['chunks'] else 0
+        print(f"Best relevance score: {best_score:.3f}")
+
+        return rag
+    else:
+        print("❌ Async scraping failed")
+        return None
+
+# Run async scraping
+rag_system = asyncio.run(async_scraping_pipeline())
+```
+
+### process_local_files_async()
+
+```python
+async def process_local_files_async(
+    self,
+    file_paths: List[str],
+    output_file: str = "data/local_docs_async.json",
+    concurrent_limit: int = 6
+) -> bool
+```
+
+Process local HTML files asynchronously with high performance.
+
+**Parameters:**
+- `file_paths` (List[str]): List of HTML file paths to process
+- `output_file` (str, optional): Output file path. Defaults to "data/local_docs_async.json".
+- `concurrent_limit` (int, optional): Number of files to process concurrently. Defaults to 6.
+
+**Returns:**
+- `bool`: True if processing was successful, False otherwise
+
+**Example:**
+```python
+import asyncio
+from pathlib import Path
+
+async def process_documentation_async():
+    rag = RAGSystem(use_async=True)
+
+    # Find all HTML files in documentation
+    docs_dir = Path("./documentation")
+    html_files = list(docs_dir.glob("**/*.html"))
+    html_file_paths = [str(f) for f in html_files]
+
+    if html_files:
+        print(f"📁 Found {len(html_files)} HTML files")
+
+        # Process asynchronously
+        success = await rag.process_local_files_async(
+            file_paths=html_file_paths,
+            output_file="data/local_docs_fast.json",
+            concurrent_limit=8
+        )
+
+        if success:
+            print("✅ Local files processed successfully!")
+
+            # Test documentation queries
+            queries = [
+                "installation instructions",
+                "configuration options",
+                "API reference"
+            ]
+
+            for query in queries:
+                result = rag.demo_query(query, top_k=3)
+                if result['chunks']:
+                    score = result['chunks'][0]['score']
+                    print(f"'{query}': {score:.3f}")
+
+        return rag
+    else:
+        print("❌ No HTML files found")
+        return None
+
+# Process local documentation
+rag_system = asyncio.run(process_documentation_async())
+```
+
+### process_mixed_sources_async()
+
+```python
+async def process_mixed_sources_async(
+    self,
+    web_urls: List[str] = None,
+    local_files: List[str] = None,
+    output_file: str = "data/mixed_docs_async.json",
+    max_pages: int = 30,
+    same_domain_only: bool = True,
+    max_depth: int = 2,
+    concurrent_limit: int = 6
+) -> bool
+```
+
+Process both web URLs and local files asynchronously in a unified pipeline.
+
+**Parameters:**
+- `web_urls` (List[str], optional): URLs to scrape from the web
+- `local_files` (List[str], optional): Local HTML files to process
+- `output_file` (str, optional): Output file path. Defaults to "data/mixed_docs_async.json".
+- `max_pages` (int, optional): Maximum pages for web scraping. Defaults to 30.
+- `same_domain_only` (bool, optional): Domain restriction for web scraping. Defaults to True.
+- `max_depth` (int, optional): Maximum depth for web scraping. Defaults to 2.
+- `concurrent_limit` (int, optional): Concurrent processing limit. Defaults to 6.
+
+**Returns:**
+- `bool`: True if processing was successful, False otherwise
+
+**Example:**
+```python
+import asyncio
+
+async def comprehensive_knowledge_base():
+    rag = RAGSystem(use_async=True)
+
+    # Combine web and local sources
+    success = await rag.process_mixed_sources_async(
+        web_urls=[
+            "https://docs.python.org/3/tutorial/",
+            "https://fastapi.tiangolo.com/"
+        ],
+        local_files=[
+            "./docs/custom-guide.html",
+            "./docs/internal-apis.html"
+        ],
+        output_file="data/comprehensive_kb.json",
+        max_pages=40,
+        concurrent_limit=8
+    )
+
+    if success:
+        print("✅ Comprehensive knowledge base created!")
+
+        # Test cross-source queries
+        cross_queries = [
+            "Python web development frameworks",
+            "API design best practices",
+            "Custom implementation details"
+        ]
+
+        for query in cross_queries:
+            result = rag.demo_query(query, top_k=5)
+            if result['chunks']:
+                # Analyze source diversity
+                sources = set()
+                for chunk in result['chunks']:
+                    if 'url' in chunk:
+                        if chunk['url'].startswith('file://'):
+                            sources.add('local')
+                        else:
+                            sources.add('web')
+
+                best_score = result['chunks'][0]['score']
+                print(f"'{query}':")
+                print(f"  Score: {best_score:.3f}")
+                print(f"  Sources: {', '.join(sources)}")
+
+        return rag
+
+    return None
+
+# Create comprehensive knowledge base
+kb_system = asyncio.run(comprehensive_knowledge_base())
+```
+
+## Data Management Methods
+
+### clear_cache()
+
+```python
+clear_cache(output_file: str = "data/website_docs.json") -> bool
+```
+
+Clear cached data and reset the system for fresh processing.
+
+**Parameters:**
+- `output_file` (str, optional): Output file to clear cache for. Defaults to "data/website_docs.json".
+
+**Returns:**
+- `bool`: True if cache was cleared successfully
+
+**Example:**
+```python
+rag = RAGSystem()
+
+# Clear cache before processing new data
+success = rag.clear_cache("data/website_docs.json")
+
+if success:
+    print("✅ Cache cleared successfully")
+
+    # Now scrape fresh data
+    success = rag.scrape_and_process_website([
+        "https://docs.python.org/3/"
+    ])
+else:
+    print("❌ Failed to clear cache")
+```
+
+### load_structured_data()
+
+```python
+load_structured_data(file_path: str) -> bool
+```
+
+Load and process structured data from previously processed files.
+
+**Parameters:**
+- `file_path` (str): Path to structured data file
+
+**Returns:**
+- `bool`: True if data was loaded and processed successfully
+
+**Example:**
+```python
+rag = RAGSystem()
+
+# Load pre-processed structured data
+success = rag.load_structured_data("data/processed_docs.json")
+
+if success:
+    print("✅ Structured data loaded successfully")
+
+    # Verify data quality
+    result = rag.demo_query("test query", top_k=1)
+    if result['chunks']:
+        print(f"Data verification: {result['chunks'][0]['score']:.3f}")
+else:
+    print("❌ Failed to load structured data")
+```
+
+### process_structured_documents()
+
+```python
+process_structured_documents(file_path: str = None) -> bool
+```
+
+Process structured documents that are already loaded in memory.
+
+**Parameters:**
+- `file_path` (str, optional): Optional file path for additional processing
+
+**Returns:**
+- `bool`: True if processing was successful
+
+**Example:**
+```python
+rag = RAGSystem()
+
+# Load data first
+rag.load_data("data/website_docs.json")
+
+# Process the loaded documents
+success = rag.process_structured_documents()
+
+if success:
+    print("✅ Documents processed successfully")
+
+    # Test improved processing
+    result = rag.demo_query("comprehensive test", top_k=3)
+    print(f"Processing quality: {len(result['chunks'])} chunks found")
+else:
+    print("❌ Document processing failed")
+```
+
+## Query Processing Methods
+
+### preprocess_query()
+
+```python
+preprocess_query(query: str) -> str
+```
+
+Preprocess and enhance queries for better retrieval performance.
+
+**Parameters:**
+- `query` (str): Raw query string
+
+**Returns:**
+- `str`: Processed and enhanced query
+
+**Features:**
+- Query normalization and cleaning
+- Synonym expansion for technical terms
+- Context enhancement for better matching
+
+**Example:**
+```python
+rag = RAGSystem()
+
+# Test query preprocessing
+raw_queries = [
+    "how to create functions?",
+    "API authentication",
+    "error handling best practices"
+]
+
+for raw_query in raw_queries:
+    processed = rag.preprocess_query(raw_query)
+    print(f"Raw: '{raw_query}'")
+    print(f"Processed: '{processed}'")
+
+    # Use processed query for better results
+    result = rag.demo_query(processed, top_k=3)
+    if result['chunks']:
+        score = result['chunks'][0]['score']
+        print(f"Score with processing: {score:.3f}")
+    print("-" * 50)
+```
+
+### retrieve_context()
+
+```python
+retrieve_context(query: str, top_k: int = 5) -> Tuple[List[str], List[Dict]]
+```
+
+Retrieve context chunks with detailed scoring and metadata.
+
+**Parameters:**
+- `query` (str): Query string
+- `top_k` (int, optional): Number of top results to return. Defaults to 5.
+
+**Returns:**
+- `Tuple[List[str], List[Dict]]`: Tuple of (context_texts, chunk_metadata)
+
+**Example:**
+```python
+rag = RAGSystem()
+rag.load_data("data/website_docs.json")
+
+# Retrieve context with detailed analysis
+query = "Python function definitions"
+context_texts, chunk_metadata = rag.retrieve_context(query, top_k=5)
+
+print(f"📋 Retrieved {len(context_texts)} context chunks:")
+
+for i, (text, metadata) in enumerate(zip(context_texts, chunk_metadata)):
+    print(f"\n--- Chunk {i+1} ---")
+    print(f"Score: {metadata.get('score', 0):.3f}")
+    print(f"Source: {metadata.get('url', 'unknown')}")
+    print(f"Title: {metadata.get('title', 'unknown')}")
+    print(f"Content: {text[:150]}...")
+
+# Use context for custom processing
+combined_context = "\n\n".join(context_texts)
+print(f"\n📊 Total context length: {len(combined_context)} characters")
+```
+
 
 ## Advanced Usage
 

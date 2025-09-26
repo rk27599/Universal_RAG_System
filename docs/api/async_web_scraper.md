@@ -77,24 +77,121 @@ config = ScrapingConfig(
 ```python
 @dataclass
 class PerformanceMetrics:
-    start_time: float
+    start_time: float = field(default_factory=time.time)
     urls_discovered: int = 0
     urls_processed: int = 0
     urls_failed: int = 0
     total_requests: int = 0
     cache_hits: int = 0
-    total_bytes_downloaded: int = 0
-    elapsed_time: float = 0
+
+    def duration(self) -> float
+    def requests_per_second(self) -> float
+    def success_rate(self) -> float
 ```
+
+Tracks comprehensive performance metrics during scraping operations.
+
+**Calculated Properties:**
+- `duration()`: Total elapsed time in seconds
+- `requests_per_second()`: Average request rate
+- `success_rate()`: Success percentage (0-100)
 
 **Usage:**
 ```python
-success, metrics = await scraper.scrape_website([url])
+async with AsyncWebScraper(config) as scraper:
+    results = await scraper.scrape_website_async([url])
 
-print(f"Processing time: {metrics.elapsed_time:.1f}s")
-print(f"Pages processed: {metrics.urls_processed}")
-print(f"Cache efficiency: {metrics.cache_hits/metrics.total_requests:.1%}")
-print(f"Data downloaded: {metrics.total_bytes_downloaded:,} bytes")
+    # Access metrics from scraper instance
+    metrics = scraper.metrics
+
+    print(f"⏱️  Duration: {metrics.duration():.1f}s")
+    print(f"📄 Pages processed: {metrics.urls_processed}")
+    print(f"🚀 Rate: {metrics.requests_per_second():.1f} requests/sec")
+    print(f"✅ Success rate: {metrics.success_rate():.1f}%")
+    print(f"💾 Cache hits: {metrics.cache_hits}/{metrics.total_requests}")
+
+# Performance analysis
+if metrics.success_rate() < 80:
+    print("⚠️  High failure rate - consider reducing concurrency")
+
+if metrics.requests_per_second() < 2:
+    print("🐌 Low request rate - may need configuration tuning")
+```
+
+## Advanced Content Processing
+
+### Content Extraction Features
+
+The async scraper includes advanced content processing capabilities:
+
+**Enhanced Content Detection:**
+- **Code Examples**: Automatically detects and labels `<pre>` and `<code>` blocks
+- **Tables**: Extracts structured table data with proper formatting
+- **Lists**: Processes ordered and unordered lists with hierarchy
+- **Quotes**: Identifies and formats blockquotes and citations
+
+**Semantic Chunking:**
+- **Structure-Aware**: Respects HTML heading hierarchy (h1-h6)
+- **Content-Type Labeling**: Labels chunks by content type for better retrieval
+- **Smart Splitting**: Maintains semantic coherence when splitting large sections
+- **Metadata Preservation**: Keeps page titles, URLs, and section information
+
+**Example of Enhanced Processing:**
+```python
+async with AsyncWebScraper() as scraper:
+    results = await scraper.scrape_website_async([
+        "https://docs.python.org/3/tutorial/"
+    ])
+
+    # Analyze content types in results
+    content_types = {}
+    for doc in results["documents"]:
+        for section in doc["sections"]:
+            for content_item in section.get("content", []):
+                if content_item.startswith("Code example:"):
+                    content_types["code"] = content_types.get("code", 0) + 1
+                elif content_item.startswith("Table:"):
+                    content_types["table"] = content_types.get("table", 0) + 1
+                elif content_item.startswith("List:"):
+                    content_types["list"] = content_types.get("list", 0) + 1
+
+    print("📊 Content type distribution:")
+    for ctype, count in content_types.items():
+        print(f"  {ctype}: {count}")
+```
+
+### Smart Caching System
+
+The async scraper implements intelligent caching for optimal performance:
+
+**Domain Caching:**
+- Caches domain information for URL processing
+- Reduces DNS lookups and URL parsing overhead
+
+**Robots.txt Caching:**
+- Caches robots.txt files per domain
+- Avoids repeated robots.txt requests
+
+**Content Deduplication:**
+- Tracks visited URLs to prevent reprocessing
+- Uses URL normalization for effective deduplication
+
+**Cache Performance:**
+```python
+async with AsyncWebScraper(config) as scraper:
+    # First run - cold cache
+    start_time = time.time()
+    results1 = await scraper.scrape_website_async(["https://example.com"])
+    cold_time = time.time() - start_time
+
+    # Second run - warm cache (if overlapping URLs)
+    start_time = time.time()
+    results2 = await scraper.scrape_website_async(["https://example.com/docs"])
+    warm_time = time.time() - start_time
+
+    cache_efficiency = scraper.metrics.cache_hits / scraper.metrics.total_requests
+    print(f"🚀 Cache efficiency: {cache_efficiency:.1%}")
+    print(f"⚡ Speed improvement: {cold_time/warm_time:.1f}x")
 ```
 
 ## Core Methods
@@ -162,11 +259,17 @@ results = asyncio.run(scrape_documentation())
 async def save_results_async(self, results: Dict, output_file: str) -> None
 ```
 
-Save scraping results to both JSON and TXT formats.
+Save scraping results asynchronously to both JSON and TXT formats.
 
 **Parameters:**
-- `results` (Dict): Results from `scrape_website_async()`
+- `results` (Dict): Results from `scrape_website_async()` or `process_local_files_async()`
 - `output_file` (str): Output file path (creates both .json and .txt versions)
+
+**Features:**
+- Creates directory structure if it doesn't exist
+- Saves structured JSON with metadata and semantic chunks
+- Creates text file with formatted content for compatibility
+- Fully asynchronous file operations using aiofiles
 
 **Example:**
 ```python
@@ -177,6 +280,178 @@ async def save_scraping_results():
     # Save to both JSON and TXT formats
     await scraper.save_results_async(results, "data/example_docs.json")
     # Creates: data/example_docs.json and data/example_docs.txt
+
+    print("💾 Results saved to both JSON and text formats")
+
+# Save local file processing results
+async def save_local_results():
+    results = await AsyncWebScraper.process_local_files_fast([
+        "docs/page1.html", "docs/page2.html"
+    ])
+
+    await scraper.save_results_async(results, "data/local_docs.json")
+```
+
+## Local File Processing
+
+### process_local_files_fast() - Static Method
+
+```python
+@staticmethod
+async def process_local_files_fast(
+    file_paths: List[str],
+    output_file: str = "data/fast_local_docs.json",
+    concurrent_limit: int = 6
+) -> Dict
+```
+
+High-level async local HTML file processing function as a static method.
+
+**Parameters:**
+- `file_paths` (List[str]): List of HTML file paths to process
+- `output_file` (str, optional): Output file path. Defaults to "data/fast_local_docs.json".
+- `concurrent_limit` (int, optional): Number of files to process concurrently. Defaults to 6.
+
+**Returns:**
+- `Dict`: Processing results with metadata and semantic chunks
+
+**Example:**
+```python
+import asyncio
+from src.async_web_scraper import AsyncWebScraper
+
+async def process_html_files():
+    # Process local HTML files with high performance
+    results = await AsyncWebScraper.process_local_files_fast(
+        file_paths=[
+            "/path/to/docs/page1.html",
+            "/path/to/docs/page2.html",
+            "/path/to/docs/page3.html"
+        ],
+        output_file="data/local_docs.json",
+        concurrent_limit=4
+    )
+
+    metadata = results["metadata"]
+    print(f"✅ Processed {metadata['total_files']} files")
+    print(f"📊 Created {metadata['total_chunks']} semantic chunks")
+    print(f"⚡ Processing rate: {metadata['files_per_second']:.1f} files/sec")
+
+    return results
+
+# Run local file processing
+results = asyncio.run(process_html_files())
+```
+
+### process_local_files_async()
+
+```python
+async def process_local_files_async(
+    self,
+    file_paths: List[str],
+    output_file: str = "data/local_docs_async.json",
+    concurrent_limit: int = None
+) -> Dict
+```
+
+Process multiple local HTML files concurrently with async performance.
+
+**Parameters:**
+- `file_paths` (List[str]): List of HTML file paths to process
+- `output_file` (str, optional): Output file path. Defaults to "data/local_docs_async.json".
+- `concurrent_limit` (int, optional): Concurrent processing limit. Uses config value if None.
+
+**Returns:**
+- `Dict`: Processing results with metadata, documents, and semantic chunks
+
+**Example:**
+```python
+async def process_documentation_folder():
+    config = ScrapingConfig(concurrent_limit=8)
+
+    async with AsyncWebScraper(config) as scraper:
+        # Find HTML files
+        html_files = scraper.find_html_files("./documentation", "**/*.html")
+
+        # Process with custom concurrency
+        results = await scraper.process_local_files_async(
+            file_paths=html_files,
+            output_file="data/documentation.json",
+            concurrent_limit=6
+        )
+
+        print(f"Processed {len(results['documents'])} documents")
+        print(f"Generated {len(results['semantic_chunks'])} chunks")
+
+        return results
+
+results = asyncio.run(process_documentation_folder())
+```
+
+### extract_from_local_file_async()
+
+```python
+async def extract_from_local_file_async(self, file_path: str) -> Optional[Dict]
+```
+
+Async version of extract_from_local_file for processing local HTML files.
+
+**Parameters:**
+- `file_path` (str): Path to the HTML file
+
+**Returns:**
+- `Optional[Dict]`: Extracted document structure or None if failed
+
+**Example:**
+```python
+async def process_single_file():
+    async with AsyncWebScraper() as scraper:
+        doc_structure = await scraper.extract_from_local_file_async(
+            "documentation/api-guide.html"
+        )
+
+        if doc_structure:
+            print(f"Title: {doc_structure['page_title']}")
+            print(f"Sections: {len(doc_structure['sections'])}")
+            return doc_structure
+        else:
+            print("Failed to extract content")
+            return None
+
+doc = asyncio.run(process_single_file())
+```
+
+### find_html_files()
+
+```python
+def find_html_files(self, directory: str, pattern: str = "*.html") -> List[str]
+```
+
+Find HTML files in a directory with support for glob patterns.
+
+**Parameters:**
+- `directory` (str): Directory to search in
+- `pattern` (str, optional): Glob pattern. Defaults to "*.html".
+
+**Returns:**
+- `List[str]`: List of HTML file paths found
+
+**Example:**
+```python
+scraper = AsyncWebScraper()
+
+# Find all HTML files in current directory
+html_files = scraper.find_html_files("./docs")
+
+# Find HTML files recursively
+all_html = scraper.find_html_files("./docs", "**/*.html")
+
+# Find both .html and .htm files
+htm_files = scraper.find_html_files("./docs", "*.htm")
+
+print(f"Found {len(html_files)} HTML files")
+for file_path in html_files[:5]:  # Show first 5
+    print(f"  - {file_path}")
 ```
 
 ## Standalone Functions
@@ -494,6 +769,117 @@ result = asyncio.run(scrape_with_recovery())
 
 ## Integration Examples
 
+### Local File + Web Integration
+
+```python
+import asyncio
+from src.async_web_scraper import AsyncWebScraper, ScrapingConfig
+from src.rag_system import RAGSystem
+
+async def mixed_content_processing():
+    """Process both local HTML files and web content together."""
+
+    config = ScrapingConfig(concurrent_limit=6, max_pages=30)
+
+    async with AsyncWebScraper(config) as scraper:
+        # Step 1: Process local documentation files
+        local_html_files = scraper.find_html_files("./docs", "**/*.html")
+
+        if local_html_files:
+            local_results = await scraper.process_local_files_async(
+                file_paths=local_html_files,
+                output_file="data/local_docs.json"
+            )
+            print(f"📂 Processed {len(local_results['documents'])} local files")
+
+        # Step 2: Scrape related web content
+        web_results = await scraper.scrape_website_async([
+            "https://docs.python.org/3/tutorial/"
+        ])
+        await scraper.save_results_async(web_results, "data/web_docs.json")
+        print(f"🌐 Scraped {len(web_results['documents'])} web pages")
+
+        # Step 3: Combine for comprehensive knowledge base
+        all_chunks = []
+        if local_html_files:
+            all_chunks.extend(local_results['semantic_chunks'])
+        all_chunks.extend(web_results['semantic_chunks'])
+
+        combined_data = {
+            "metadata": {
+                "total_sources": len(local_html_files) + len(web_results['documents']),
+                "local_files": len(local_html_files) if local_html_files else 0,
+                "web_pages": len(web_results['documents']),
+                "total_chunks": len(all_chunks)
+            },
+            "semantic_chunks": all_chunks
+        }
+
+        # Save combined results
+        await scraper.save_results_async(combined_data, "data/combined_docs.json")
+
+        return combined_data
+
+# Run mixed processing
+combined_results = asyncio.run(mixed_content_processing())
+```
+
+### High-Performance Local File Processing
+
+```python
+async def batch_process_documentation_sites():
+    """Process multiple documentation directories with high performance."""
+
+    # Configuration for local file processing
+    config = ScrapingConfig(concurrent_limit=8)  # Higher for local files
+
+    documentation_dirs = [
+        "./project_docs",
+        "./api_docs",
+        "./user_guides",
+        "./tutorials"
+    ]
+
+    all_results = []
+
+    for doc_dir in documentation_dirs:
+        if not os.path.exists(doc_dir):
+            print(f"⚠️  Directory not found: {doc_dir}")
+            continue
+
+        print(f"📁 Processing directory: {doc_dir}")
+
+        # Use static method for high-performance processing
+        results = await AsyncWebScraper.process_local_files_fast(
+            file_paths=AsyncWebScraper().find_html_files(doc_dir, "**/*.html"),
+            output_file=f"data/{os.path.basename(doc_dir)}_docs.json",
+            concurrent_limit=6
+        )
+
+        all_results.append({
+            "directory": doc_dir,
+            "files_processed": results["metadata"]["total_files"],
+            "chunks_created": results["metadata"]["total_chunks"],
+            "processing_time": results["metadata"]["processing_time"]
+        })
+
+    # Summary report
+    total_files = sum(r["files_processed"] for r in all_results)
+    total_chunks = sum(r["chunks_created"] for r in all_results)
+    total_time = sum(r["processing_time"] for r in all_results)
+
+    print(f"\n📊 Batch Processing Summary:")
+    print(f"  Total files: {total_files}")
+    print(f"  Total chunks: {total_chunks}")
+    print(f"  Total time: {total_time:.1f}s")
+    print(f"  Average rate: {total_files/total_time:.1f} files/sec")
+
+    return all_results
+
+# Process all documentation
+results = asyncio.run(batch_process_documentation_sites())
+```
+
 ### Integration with RAG System
 
 ```python
@@ -511,16 +897,14 @@ async def fast_rag_setup():
         requests_per_second=8.0
     )
 
-    scraper = AsyncWebScraper(config)
-    success, metrics = await scraper.scrape_website(
-        ["https://fastapi.tiangolo.com/"],
-        "data/fastapi_docs.json"
-    )
+    async with AsyncWebScraper(config) as scraper:
+        results = await scraper.scrape_website_async([
+            "https://fastapi.tiangolo.com/"
+        ])
+        await scraper.save_results_async(results, "data/fastapi_docs.json")
 
-    if not success:
-        return None
-
-    print(f"⚡ Scraped {metrics.urls_processed} pages in {metrics.elapsed_time:.1f}s")
+        print(f"⚡ Scraped {len(results['documents'])} pages")
+        print(f"📊 Generated {len(results['semantic_chunks'])} chunks")
 
     # Step 2: Load into RAG system
     rag = RAGSystem()
@@ -540,13 +924,52 @@ async def fast_rag_setup():
     for query in test_queries:
         result = rag.demo_query(query, top_k=3)
         results[query] = result
-        print(f"Query: {query}")
-        print(f"Best score: {result['chunks'][0]['score']:.3f}")
+
+        if result['chunks']:
+            best_score = result['chunks'][0]['score']
+            print(f"Query: '{query}' - Score: {best_score:.3f}")
 
     return rag, results
 
 # Run complete pipeline
 rag_system, query_results = asyncio.run(fast_rag_setup())
+```
+
+### Real-Time Documentation Processing
+
+```python
+async def watch_and_process_files():
+    """Example of processing files as they're updated (conceptual)."""
+
+    import asyncio
+    from pathlib import Path
+
+    docs_dir = Path("./live_docs")
+    processed_files = set()
+
+    while True:
+        # Find new or modified HTML files
+        current_files = set(docs_dir.glob("**/*.html"))
+        new_files = current_files - processed_files
+
+        if new_files:
+            print(f"📁 Found {len(new_files)} new/updated files")
+
+            # Process new files
+            results = await AsyncWebScraper.process_local_files_fast(
+                file_paths=[str(f) for f in new_files],
+                output_file="data/live_docs.json",
+                concurrent_limit=4
+            )
+
+            print(f"✅ Processed {results['metadata']['total_files']} files")
+            processed_files.update(new_files)
+
+        # Wait before checking again
+        await asyncio.sleep(5)
+
+# Run file watcher (use with caution - infinite loop)
+# asyncio.run(watch_and_process_files())
 ```
 
 ### Web Service Integration

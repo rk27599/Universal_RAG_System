@@ -9,17 +9,31 @@ Synchronous web scraper with comprehensive error reporting and debugging capabil
 ### Constructor
 
 ```python
-WebScraper()
+WebScraper(base_url: str = None, respect_robots_txt: bool = True, local_mode: bool = False)
 ```
 
-Simple constructor with no configuration parameters. All settings are passed to individual methods.
+Initialize web scraper with optional configuration.
+
+**Parameters:**
+- `base_url` (str, optional): Base URL for the website to scrape. Used for robots.txt validation.
+- `respect_robots_txt` (bool, optional): Whether to respect robots.txt rules. Defaults to True.
+- `local_mode` (bool, optional): Enable local-only mode for processing HTML files. Defaults to False.
 
 **Example:**
 ```python
 from src.web_scraper import WebScraper
 
-# Initialize scraper
+# Basic scraper for web content
 scraper = WebScraper()
+
+# Scraper for specific website with robots.txt
+scraper = WebScraper(
+    base_url="https://docs.python.org/",
+    respect_robots_txt=True
+)
+
+# Local-only mode for processing HTML files
+local_scraper = WebScraper(local_mode=True)
 ```
 
 ## Core Methods
@@ -146,36 +160,332 @@ for chunk in content_chunks:
 ### discover_urls()
 
 ```python
-discover_urls(soup: BeautifulSoup, base_url: str, current_depth: int) -> Set[str]
+discover_urls(
+    start_urls: List[str],
+    max_pages: int = 50,
+    same_domain_only: bool = True,
+    max_depth: int = 2
+) -> List[str]
 ```
 
-Discover new URLs from page content with depth and domain filtering.
+Discover URLs starting from given URLs with intelligent filtering.
 
 **Parameters:**
-- `soup` (BeautifulSoup): Parsed HTML content
-- `base_url` (str): Base URL for resolving relative links
-- `current_depth` (int): Current crawling depth
+- `start_urls` (List[str]): List of URLs to start discovery from
+- `max_pages` (int, optional): Maximum number of URLs to discover. Defaults to 50.
+- `same_domain_only` (bool, optional): Stay within the starting domain. Defaults to True.
+- `max_depth` (int, optional): Maximum crawling depth. Defaults to 2.
 
 **Returns:**
-- `Set[str]`: Set of discovered URLs
+- `List[str]`: List of discovered URLs
 
 **Example:**
 ```python
 scraper = WebScraper()
 
-# Manual URL discovery
-response = requests.get("https://docs.python.org/3/")
-soup = BeautifulSoup(response.content, 'html.parser')
-
+# Discover URLs from starting points
 discovered_urls = scraper.discover_urls(
-    soup,
-    "https://docs.python.org/3/",
-    current_depth=1
+    start_urls=["https://docs.python.org/3/"],
+    max_pages=30,
+    same_domain_only=True,
+    max_depth=2
 )
 
 print(f"Found {len(discovered_urls)} URLs:")
-for url in list(discovered_urls)[:5]:
+for url in discovered_urls[:5]:
     print(f"  - {url}")
+```
+
+## Local File Processing
+
+### extract_from_local_file()
+
+```python
+extract_from_local_file(file_path: str) -> Optional[Dict]
+```
+
+Extract structured content from a local HTML file.
+
+**Parameters:**
+- `file_path` (str): Path to the HTML file to process
+
+**Returns:**
+- `Optional[Dict]`: Extracted document structure or None if failed
+
+**Features:**
+- Supports both .html and .htm files
+- Extracts page title, sections, and content hierarchy
+- Creates file:// URLs for consistency
+- Handles encoding issues gracefully
+
+**Example:**
+```python
+scraper = WebScraper(local_mode=True)
+
+# Process a single HTML file
+doc_structure = scraper.extract_from_local_file("docs/user-guide.html")
+
+if doc_structure:
+    print(f"Title: {doc_structure['page_title']}")
+    print(f"Sections: {len(doc_structure['sections'])}")
+    print(f"Domain: {doc_structure['domain']}")  # Will be 'local'
+
+    # Examine sections
+    for section in doc_structure['sections']:
+        print(f"  - {section['title']} ({section['word_count']} words)")
+else:
+    print("Failed to extract content from file")
+```
+
+### process_local_files()
+
+```python
+process_local_files(
+    file_paths: List[str],
+    output_file: str = "data/local_docs_structured.json"
+) -> Dict
+```
+
+Process multiple local HTML files with detailed progress reporting.
+
+**Parameters:**
+- `file_paths` (List[str]): List of HTML file paths to process
+- `output_file` (str, optional): Output file path. Defaults to "data/local_docs_structured.json".
+
+**Returns:**
+- `Dict`: Processing results with metadata, documents, and semantic chunks
+
+**Features:**
+- Processes files sequentially with detailed logging
+- Creates both JSON and TXT output formats
+- Generates semantic chunks with proper metadata
+- Provides comprehensive statistics and error reporting
+
+**Example:**
+```python
+scraper = WebScraper(local_mode=True)
+
+# Find HTML files in directory
+html_files = scraper.find_html_files("./documentation", "*.html")
+
+# Process all files
+results = scraper.process_local_files(
+    file_paths=html_files,
+    output_file="data/documentation.json"
+)
+
+print(f"✅ Processed {results['metadata']['total_files']} files")
+print(f"📊 Created {results['metadata']['total_chunks']} semantic chunks")
+
+# Access processed documents
+for doc in results['documents']:
+    print(f"📄 {doc['page_title']}: {doc['total_sections']} sections")
+```
+
+### process_mixed_sources()
+
+```python
+process_mixed_sources(
+    web_urls: List[str] = None,
+    local_files: List[str] = None,
+    output_file: str = "data/mixed_docs_structured.json",
+    max_pages: int = 30,
+    same_domain_only: bool = True,
+    max_depth: int = 2
+) -> Dict
+```
+
+Process both web URLs and local HTML files in a single operation.
+
+**Parameters:**
+- `web_urls` (List[str], optional): URLs to scrape from the web
+- `local_files` (List[str], optional): Local HTML files to process
+- `output_file` (str, optional): Output file path. Defaults to "data/mixed_docs_structured.json".
+- `max_pages` (int, optional): Maximum pages for web scraping. Defaults to 30.
+- `same_domain_only` (bool, optional): Domain restriction for web scraping. Defaults to True.
+- `max_depth` (int, optional): Maximum depth for web scraping. Defaults to 2.
+
+**Returns:**
+- `Dict`: Combined processing results
+
+**Example:**
+```python
+scraper = WebScraper()
+
+# Process both web and local sources
+results = scraper.process_mixed_sources(
+    web_urls=["https://docs.python.org/3/tutorial/"],
+    local_files=["./docs/custom-guide.html", "./docs/api-reference.html"],
+    output_file="data/comprehensive_docs.json",
+    max_pages=20
+)
+
+metadata = results['metadata']
+print(f"📊 Mixed Processing Results:")
+print(f"  Web URLs processed: {len(metadata['web_urls'])}")
+print(f"  Local files processed: {len(metadata['local_files'])}")
+print(f"  Total documents: {metadata['total_documents']}")
+print(f"  Total chunks: {metadata['total_chunks']}")
+print(f"  Domains covered: {len(metadata['domains'])}")
+```
+
+### find_html_files()
+
+```python
+find_html_files(directory: str, pattern: str = "*.html") -> List[str]
+```
+
+Find HTML files in a directory with glob pattern support.
+
+**Parameters:**
+- `directory` (str): Directory to search in
+- `pattern` (str, optional): Glob pattern for file matching. Defaults to "*.html".
+
+**Returns:**
+- `List[str]`: Sorted list of HTML file paths found
+
+**Features:**
+- Supports both .html and .htm files automatically
+- Recursive search with ** patterns
+- Removes duplicates and sorts results
+- Cross-platform path handling
+
+**Example:**
+```python
+scraper = WebScraper()
+
+# Find HTML files in current directory
+html_files = scraper.find_html_files("./docs")
+
+# Find HTML files recursively
+all_html = scraper.find_html_files("./docs", "**/*.html")
+
+# Find both HTML and HTM files
+all_files = []
+all_files.extend(scraper.find_html_files("./docs", "*.html"))
+all_files.extend(scraper.find_html_files("./docs", "*.htm"))
+
+print(f"Found {len(html_files)} HTML files:")
+for file_path in html_files:
+    print(f"  - {file_path}")
+```
+
+## Content Processing Methods
+
+### extract_sections()
+
+```python
+extract_sections(content_soup: BeautifulSoup, url: str, page_title: str) -> List[Dict]
+```
+
+Extract sections with hierarchy and context from HTML content.
+
+**Parameters:**
+- `content_soup` (BeautifulSoup): Cleaned HTML content
+- `url` (str): Source URL for metadata
+- `page_title` (str): Page title for context
+
+**Returns:**
+- `List[Dict]`: List of section dictionaries with content and metadata
+
+**Features:**
+- Respects HTML heading hierarchy (h1-h6)
+- Processes various content types (paragraphs, code, lists, tables)
+- Labels content by type for better organization
+- Maintains section relationships and word counts
+
+**Example:**
+```python
+from bs4 import BeautifulSoup
+
+scraper = WebScraper()
+
+# Process HTML content manually
+with open("example.html", 'r') as f:
+    html_content = f.read()
+
+soup = BeautifulSoup(html_content, 'html.parser')
+soup = scraper.clean_content(soup)
+
+sections = scraper.extract_sections(soup, "file://example.html", "Example Page")
+
+for section in sections:
+    print(f"Section: {section['title']} (Level {section['level']})")
+    print(f"  Content items: {len(section['content'])}")
+    print(f"  Word count: {section['word_count']}")
+```
+
+### extract_table_text()
+
+```python
+extract_table_text(table_element) -> str
+```
+
+Extract structured text from HTML table elements.
+
+**Parameters:**
+- `table_element`: BeautifulSoup table element
+
+**Returns:**
+- `str`: Formatted table text with pipe separators
+
+**Example:**
+```python
+scraper = WebScraper()
+
+# Extract table from HTML
+soup = BeautifulSoup(html_content, 'html.parser')
+table = soup.find('table')
+
+if table:
+    table_text = scraper.extract_table_text(table)
+    print("Table content:")
+    print(table_text)
+```
+
+### create_semantic_chunks()
+
+```python
+create_semantic_chunks(
+    structured_docs: List[Dict],
+    max_chunk_size: int = 1200
+) -> List[Dict]
+```
+
+Create semantically meaningful chunks from structured documents.
+
+**Parameters:**
+- `structured_docs` (List[Dict]): List of structured document dictionaries
+- `max_chunk_size` (int, optional): Maximum size per chunk. Defaults to 1200.
+
+**Returns:**
+- `List[Dict]`: List of semantic chunks with rich metadata
+
+**Features:**
+- Maintains semantic coherence across chunks
+- Smart splitting for large sections using paragraph boundaries
+- Rich metadata including page titles, section titles, URLs
+- Content type classification and word counts
+
+**Example:**
+```python
+scraper = WebScraper()
+
+# Process files and create chunks
+results = scraper.process_local_files(["doc1.html", "doc2.html"])
+documents = results['documents']
+
+# Create custom chunks with different size
+chunks = scraper.create_semantic_chunks(documents, max_chunk_size=800)
+
+print(f"Created {len(chunks)} semantic chunks")
+
+for chunk in chunks[:3]:  # Show first 3
+    print(f"Title: {chunk['title']}")
+    print(f"Type: {chunk.get('type', 'unknown')}")
+    print(f"Words: {chunk['word_count']}")
+    print(f"Content: {chunk['text'][:100]}...")
+    print("-" * 50)
 ```
 
 ## Advanced Usage
@@ -560,6 +870,132 @@ diagnose_scraping_issues()
 ```
 
 ## Integration with RAG System
+
+### Local File Processing Pipeline
+
+```python
+from src.web_scraper import WebScraper
+from src.rag_system import RAGSystem
+
+def local_file_rag_pipeline():
+    """Complete pipeline for processing local HTML documentation."""
+
+    print("📂 Starting local file → RAG pipeline...")
+
+    # Step 1: Process local HTML files
+    scraper = WebScraper(local_mode=True)
+
+    # Find all HTML documentation files
+    html_files = scraper.find_html_files("./documentation", "**/*.html")
+
+    if not html_files:
+        print("❌ No HTML files found in documentation directory")
+        return None
+
+    print(f"📄 Found {len(html_files)} HTML files")
+
+    # Process all local files
+    results = scraper.process_local_files(
+        file_paths=html_files,
+        output_file="data/local_documentation.json"
+    )
+
+    print(f"✅ Processed {results['metadata']['total_files']} files")
+    print(f"📊 Created {results['metadata']['total_chunks']} semantic chunks")
+
+    # Step 2: Load into RAG system
+    rag = RAGSystem()
+    loaded = rag.load_data("data/local_documentation.json")
+
+    if not loaded:
+        print("❌ Failed to load data into RAG system")
+        return None
+
+    print("✅ Data loaded into RAG system")
+
+    # Step 3: Test with documentation-specific queries
+    test_queries = [
+        "How to install the software?",
+        "API authentication methods",
+        "Configuration file format",
+        "Troubleshooting common issues"
+    ]
+
+    print("\n🧪 Testing documentation queries...")
+    for query in test_queries:
+        result = rag.demo_query(query, top_k=3)
+
+        if result['chunks']:
+            best_score = result['chunks'][0]['score']
+            print(f"Query: '{query}' - Score: {best_score:.3f}")
+
+            if best_score < 0.3:
+                print(f"  ⚠️  Low relevance - may need more specific documentation")
+        else:
+            print(f"Query: '{query}' - No results found")
+
+    return rag
+
+# Process local documentation
+rag_system = local_file_rag_pipeline()
+```
+
+### Mixed Source Processing Pipeline
+
+```python
+def mixed_source_rag_pipeline():
+    """Process both web content and local files together."""
+
+    print("🔄 Starting mixed source → RAG pipeline...")
+
+    scraper = WebScraper()
+
+    # Step 1: Find local HTML files
+    local_files = scraper.find_html_files("./docs", "*.html")
+
+    # Step 2: Process mixed sources
+    results = scraper.process_mixed_sources(
+        web_urls=["https://docs.python.org/3/tutorial/"],
+        local_files=local_files,
+        output_file="data/mixed_comprehensive.json",
+        max_pages=25
+    )
+
+    metadata = results['metadata']
+    print(f"📊 Mixed Processing Complete:")
+    print(f"  Web pages: {len(metadata.get('web_urls', []))}")
+    print(f"  Local files: {len(metadata.get('local_files', []))}")
+    print(f"  Total documents: {metadata['total_documents']}")
+    print(f"  Total chunks: {metadata['total_chunks']}")
+
+    # Step 3: Load into RAG system
+    rag = RAGSystem()
+    loaded = rag.load_data("data/mixed_comprehensive.json")
+
+    if loaded:
+        print("✅ Mixed source data loaded successfully")
+
+        # Test comprehensive queries
+        comprehensive_queries = [
+            "Python basics and fundamentals",
+            "Local setup and configuration",
+            "Advanced programming concepts"
+        ]
+
+        for query in comprehensive_queries:
+            result = rag.demo_query(query, top_k=5)
+            if result['chunks']:
+                sources = set(chunk.get('domain', 'unknown') for chunk in result['chunks'])
+                best_score = result['chunks'][0]['score']
+                print(f"Query: '{query}'")
+                print(f"  Score: {best_score:.3f}")
+                print(f"  Sources: {', '.join(sources)}")
+
+    return rag
+
+# Process mixed sources
+mixed_rag = mixed_source_rag_pipeline()
+```
 
 ### Direct Integration
 
