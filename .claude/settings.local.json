@@ -6,7 +6,9 @@
       "Bash(jupyter lab --version)",
       "SlashCommand(/init)",
       "Bash(python:*)",
-      "Bash(timeout:*)"
+      "Bash(timeout:*)",
+      "Bash(mkdir:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []

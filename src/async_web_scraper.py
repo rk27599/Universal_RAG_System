@@ -111,6 +111,7 @@ class AsyncWebScraper:
                 'Accept-Encoding': 'gzip, deflate',
                 'Connection': 'keep-alive',
                 'Upgrade-Insecure-Requests': '1',
+                'Referer': 'https://www.google.com/'
             }
         )
 
