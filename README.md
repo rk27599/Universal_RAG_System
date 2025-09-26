@@ -81,10 +81,23 @@ print(answer)
 ├── README.md                         # This file
 ├── CLAUDE.md                        # Detailed project documentation
 ├── requirements.txt                 # Python dependencies
+├── docs/                            # Comprehensive documentation
+│   ├── README.md                   # Documentation overview
+│   ├── architecture.md             # System architecture
+│   ├── api/                        # API documentation
+│   │   ├── README.md
+│   │   ├── rag_system.md
+│   │   └── async_web_scraper.md
+│   └── guides/                     # User guides
+│       ├── README.md
+│       ├── getting-started.md
+│       ├── development.md
+│       └── troubleshooting.md
 ├── src/                             # Source code
 │   ├── __init__.py
-│   ├── web_scraper.py              # Universal web scraper
-│   └── rag_system.py               # Generic RAG system
+│   ├── web_scraper.py              # Synchronous web scraper
+│   ├── async_web_scraper.py        # High-performance async scraper
+│   └── rag_system.py               # Main RAG system
 ├── data/                            # Data files (auto-generated)
 │   ├── *.json                      # Structured website data
 │   ├── *.txt                       # Text format compatibility
@@ -104,14 +117,15 @@ print(answer)
 
 ## 🎯 Core Components
 
-### 1. Universal Web Scraper (`src/web_scraper.py`)
+### 1. Web Scraping System
+- **Synchronous Scraper** (`src/web_scraper.py`): Reliable, debuggable scraping
+- **Async Scraper** (`src/async_web_scraper.py`): High-performance concurrent processing
 - Works with **any website** automatically
 - Preserves HTML hierarchy and document structure
 - Respects robots.txt and implements polite crawling
 - Creates semantic chunks based on content sections
-- Smart domain filtering and depth control
 
-### 2. Generic RAG System (`src/rag_system.py`)
+### 2. RAG System (`src/rag_system.py`)
 - Advanced TF-IDF with trigrams and sublinear scaling
 - Intelligent caching system for scraped data
 - Boosted scoring for different content types
@@ -158,6 +172,15 @@ The system works in two modes:
 Adjust retrieval parameters:
 - `top_k`: Number of results (recommended: 3-7)
 - Model selection for Ollama: `mistral`, `llama2`, etc.
+
+## 📖 Documentation
+
+For comprehensive documentation, visit the [`docs/`](./docs/) directory:
+
+- **[Getting Started Guide](./docs/guides/getting-started.md)** - Complete beginner tutorial
+- **[API Reference](./docs/api/README.md)** - Detailed API documentation
+- **[Architecture Overview](./docs/architecture.md)** - System design and components
+- **[Development Guide](./docs/guides/development.md)** - Contributing and development setup
 
 ## 📖 Usage Examples
 
