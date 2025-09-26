@@ -104,6 +104,57 @@ class RAGSystem:
 
         return success
 
+    async def process_local_files_async(self, file_paths: List[str],
+                                      output_file: str = "data/local_docs_async.json",
+                                      concurrent_limit: int = 6,
+                                      use_cache: bool = True) -> bool:
+        """Process local HTML files asynchronously for RAG"""
+
+        print(f"🚀 RAG: High-Performance Async Local File Processing...")
+
+        # Check cache first
+        cache_file = output_file.replace('.json', '_cache.pkl')
+
+        if use_cache and os.path.exists(output_file) and os.path.exists(cache_file):
+            print(f"💾 Found cached local file data!")
+            success = self.process_structured_documents(output_file)
+            if success:
+                print("✅ Using cached data - ready to query!")
+                return True
+
+        # Perform async local file processing
+        start_time = time.time()
+
+        try:
+            from .async_web_scraper import process_local_files_fast
+
+            results = await process_local_files_fast(
+                file_paths=file_paths,
+                output_file=output_file,
+                concurrent_limit=concurrent_limit
+            )
+
+            duration = time.time() - start_time
+            metadata = results.get("metadata", {})
+
+            print(f"⚡ Async local file processing completed in {duration:.2f}s")
+            print(f"📊 Performance: {metadata.get('files_per_second', 0):.1f} files/sec")
+            print(f"✅ Success rate: {metadata.get('total_files', 0) - metadata.get('failed_files', 0)}/{metadata.get('total_files', 0)} files")
+
+            # Process the data for RAG
+            success = self.process_structured_documents(output_file)
+
+            if success:
+                print("✅ Async local files processed and ready for RAG!")
+            else:
+                print("❌ Failed to process local file data for RAG")
+
+            return success
+
+        except Exception as e:
+            print(f"❌ Async local file processing failed: {e}")
+            return False
+
     async def scrape_and_process_website_async(self, start_urls: List[str],
                                              max_pages: int = 30,
                                              output_file: str = "data/website_docs_async.json",
@@ -155,6 +206,136 @@ class RAGSystem:
 
         except Exception as e:
             print(f"❌ Async scraping failed: {e}")
+            return False
+
+    async def process_mixed_sources_async(self, web_urls: List[str] = None,
+                                        local_files: List[str] = None,
+                                        output_file: str = "data/mixed_docs_async.json",
+                                        max_pages: int = 30,
+                                        concurrent_limit: int = 6,
+                                        use_cache: bool = True) -> bool:
+        """Process both web URLs and local HTML files asynchronously in a single operation"""
+
+        print(f"🚀 RAG: High-Performance Mixed Async Processing...")
+        print(f"   Web URLs: {len(web_urls) if web_urls else 0}")
+        print(f"   Local files: {len(local_files) if local_files else 0}")
+
+        # Check cache first
+        cache_file = output_file.replace('.json', '_cache.pkl')
+
+        if use_cache and os.path.exists(output_file) and os.path.exists(cache_file):
+            print(f"💾 Found cached mixed data!")
+            success = self.process_structured_documents(output_file)
+            if success:
+                print("✅ Using cached data - ready to query!")
+                return True
+
+        start_time = time.time()
+        all_structured_docs = []
+
+        try:
+            # Process web URLs if provided
+            if web_urls:
+                print(f"🌐 Processing {len(web_urls)} web URLs asynchronously...")
+                web_success = await self.scrape_and_process_website_async(
+                    start_urls=web_urls,
+                    max_pages=max_pages,
+                    output_file=f"{output_file}_web_temp.json",
+                    concurrent_limit=concurrent_limit,
+                    use_cache=False  # Don't cache temp files
+                )
+
+                if web_success:
+                    # Load web data and extract documents
+                    with open(f"{output_file}_web_temp.json", 'r') as f:
+                        web_data = json.load(f)
+                    all_structured_docs.extend(web_data.get('documents', []))
+                    print(f"✅ Web processing complete: {len(web_data.get('documents', []))} documents")
+                else:
+                    print("⚠️  Web processing failed, continuing with local files only")
+
+            # Process local files if provided
+            if local_files:
+                print(f"📂 Processing {len(local_files)} local files asynchronously...")
+                local_success = await self.process_local_files_async(
+                    file_paths=local_files,
+                    output_file=f"{output_file}_local_temp.json",
+                    concurrent_limit=concurrent_limit,
+                    use_cache=False  # Don't cache temp files
+                )
+
+                if local_success:
+                    # Load local data and extract documents
+                    with open(f"{output_file}_local_temp.json", 'r') as f:
+                        local_data = json.load(f)
+                    all_structured_docs.extend(local_data.get('documents', []))
+                    print(f"✅ Local processing complete: {len(local_data.get('documents', []))} documents")
+                else:
+                    print("⚠️  Local file processing failed")
+
+            if not all_structured_docs:
+                print("❌ No documents were successfully processed")
+                return False
+
+            # Create combined semantic chunks using sync scraper method
+            print(f"🧠 Creating semantic chunks from {len(all_structured_docs)} total documents...")
+            from .web_scraper import WebScraper
+            scraper = WebScraper()
+            semantic_chunks = scraper.create_semantic_chunks(all_structured_docs)
+
+            # Create combined output
+            combined_output = {
+                "metadata": {
+                    "processing_timestamp": time.time(),
+                    "source_type": "mixed_async",
+                    "web_urls": web_urls or [],
+                    "local_files": local_files or [],
+                    "total_documents": len(all_structured_docs),
+                    "total_chunks": len(semantic_chunks),
+                    "processing_time": time.time() - start_time,
+                    "domains": list(set(doc.get("domain", "") for doc in all_structured_docs))
+                },
+                "documents": all_structured_docs,
+                "semantic_chunks": semantic_chunks
+            }
+
+            # Save combined data
+            os.makedirs(os.path.dirname(output_file), exist_ok=True)
+
+            print(f"💾 Saving combined data to {output_file}...")
+            with open(output_file, 'w', encoding='utf-8') as f:
+                json.dump(combined_output, f, indent=2, ensure_ascii=False)
+
+            # Create text file for compatibility
+            text_file = output_file.replace('.json', '.txt')
+            with open(text_file, 'w', encoding='utf-8') as f:
+                for chunk in semantic_chunks:
+                    f.write(f"{chunk['text']}\n\n{'='*80}\n\n")
+
+            # Clean up temporary files
+            for temp_file in [f"{output_file}_web_temp.json", f"{output_file}_local_temp.json"]:
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+
+            # Process the combined data for RAG
+            success = self.process_structured_documents(output_file)
+
+            duration = time.time() - start_time
+
+            if success:
+                print(f"✅ Mixed async processing complete in {duration:.1f}s!")
+                print(f"   📊 Statistics:")
+                print(f"      Documents processed: {len(all_structured_docs)}")
+                print(f"      Semantic chunks: {len(semantic_chunks)}")
+                print(f"      Domains: {len(combined_output['metadata']['domains'])}")
+                print(f"      Processing rate: {len(all_structured_docs)/duration:.1f} docs/sec")
+            else:
+                print("❌ Failed to process mixed data for RAG")
+
+            return success
+
+        except Exception as e:
+            print(f"❌ Mixed async processing failed: {e}")
             return False
 
     def clear_cache(self, output_file: str = "data/website_docs.json") -> bool:

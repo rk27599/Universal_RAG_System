@@ -236,55 +236,106 @@ class AsyncWebScraper:
         return soup
 
     def _extract_structured_content_fast(self, url: str, html_content: str) -> Optional[Dict]:
-        """Optimized content extraction with performance focus"""
+        """Robust content extraction, improved for depth and structure"""
+
+        def extract_table_text(table_element):
+            rows = []
+            for row in table_element.find_all('tr'):
+                cells = [cell.get_text().strip() for cell in row.find_all(['td', 'th'])]
+                if any(cells):
+                    rows.append(" | ".join(cells))
+            return "\n".join(rows)
+
         try:
-            soup = BeautifulSoup(html_content, 'html.parser')  # Use standard parser for compatibility
+            soup = BeautifulSoup(html_content, 'html.parser')
             soup = self._clean_content_fast(soup)
 
-            # Fast title extraction
-            title = "Unknown"
-            title_tag = soup.find('h1') or soup.find('title')
-            if title_tag:
-                title = title_tag.get_text().strip()[:200]  # Limit title length
+            # Improved title extraction
+            title_sources = [
+                soup.find('h1'),
+                soup.find('title'),
+                soup.find('meta', attrs={'property': 'og:title'}),
+                soup.find('meta', attrs={'name': 'twitter:title'}),
+                soup.find('h2'),
+            ]
 
-            # Fast main content detection
+            title = None
+            for source in title_sources:
+                if source:
+                    if source.name == 'meta':
+                        t = source.get('content', '').strip()
+                    else:
+                        t = source.get_text().strip()
+                    if t:
+                        title = t[:200]
+                        break
+            if not title:
+                # Fallback to URL path
+                path = urlparse(url).path
+                if path and path != '/':
+                    title = path.split('/')[-1].replace('-', ' ').replace('_', ' ').title()
+                else:
+                    title = urlparse(url).netloc
+
+            # Enhanced main content detection
             main_content = (
                 soup.find('main') or
                 soup.find('article') or
-                soup.find('div', class_=re.compile(r'content|main', re.I)) or
+                soup.find('div', class_=re.compile(r'content|main|body', re.I)) or
+                soup.find('div', id=re.compile(r'content|main|body', re.I)) or
                 soup.find('section') or
                 soup
             )
 
-            # Simplified section extraction for speed
             sections = []
-            elements = main_content.find_all(['h1', 'h2', 'h3', 'p', 'pre', 'ul', 'ol'])
+            current_section = {"title": title, "content": [], "level": 1, "page_title": title, "url": url, "section_id": 1}
 
-            current_section = {"title": title, "content": [], "level": 1}
+            # Support headings h1 to h6, and add more content tags
+            elements = main_content.find_all([
+                'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+                'p', 'pre', 'ul', 'ol', 'dl', 'blockquote', 'table', 'code'
+            ])
 
+            section_counter = 1
             for element in elements:
-                if element.name in ['h1', 'h2', 'h3']:
-                    # Save previous section
+                if element.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+                    # Save previous section if content exists
                     if current_section["content"]:
-                        current_section["content_text"] = "\n".join(current_section["content"])
+                        current_section["content_text"] = "\n\n".join(current_section["content"])
                         current_section["word_count"] = len(current_section["content_text"].split())
                         sections.append(current_section.copy())
 
-                    # Start new section
+                    section_counter += 1
                     current_section = {
                         "title": element.get_text().strip()[:100],
                         "content": [],
-                        "level": int(element.name[1])
+                        "level": int(element.name[1]),
+                        "page_title": title,
+                        "url": url,
+                        "section_id": section_counter
                     }
 
-                elif element.name in ['p', 'pre', 'ul', 'ol']:
+                elif element.name in ['p', 'pre', 'ul', 'ol', 'dl', 'blockquote', 'code']:
                     text = element.get_text().strip()
-                    if len(text) > 30:  # Only substantial content
-                        current_section["content"].append(text[:1000])  # Limit content length
+                    if len(text) > 20:
+                        # Label content per type
+                        if element.name == 'pre' or element.name == 'code':
+                            text = f"Code example:\n{text}"
+                        elif element.name in ['ul', 'ol', 'dl']:
+                            text = f"List:\n{text}"
+                        elif element.name == 'blockquote':
+                            text = f"Quote:\n{text}"
 
-            # Add final section
+                        current_section["content"].append(text[:1000])
+
+                elif element.name == 'table':
+                    table_text = extract_table_text(element)
+                    if table_text:
+                        current_section["content"].append(f"Table:\n{table_text[:1000]}")
+
+            # Add last section
             if current_section["content"]:
-                current_section["content_text"] = "\n".join(current_section["content"])
+                current_section["content_text"] = "\n\n".join(current_section["content"])
                 current_section["word_count"] = len(current_section["content_text"].split())
                 sections.append(current_section)
 
@@ -297,7 +348,7 @@ class AsyncWebScraper:
             }
 
         except Exception as e:
-            logger.warning(f"Content extraction error for {url}: {e}")
+            print(f"Content extraction error for {url}: {e}")
             return None
 
     async def _process_url(self, url: str, depth: int) -> Tuple[Optional[Dict], List[str]]:
@@ -469,6 +520,130 @@ class AsyncWebScraper:
 
         return chunks
 
+    async def extract_from_local_file_async(self, file_path: str) -> Optional[Dict]:
+        """Async version of extract_from_local_file for processing local HTML files"""
+        try:
+            file_path_obj = Path(file_path).resolve()
+
+            if not file_path_obj.exists():
+                logger.warning(f"File not found: {file_path_obj}")
+                return None
+
+            if file_path_obj.suffix.lower() not in ['.html', '.htm']:
+                logger.warning(f"Not an HTML file: {file_path_obj}")
+                return None
+
+            logger.info(f"📂 Reading local file: {file_path_obj.name}")
+
+            # Use aiofiles for async file reading
+            async with aiofiles.open(file_path_obj, 'r', encoding='utf-8', errors='ignore') as f:
+                html_content = await f.read()
+
+            # Create file:// URL for consistency
+            file_url = f"file://{file_path_obj}"
+
+            # Reuse existing fast content extraction method
+            return self._extract_structured_content_fast(file_url, html_content)
+
+        except Exception as e:
+            logger.error(f"Error reading {file_path}: {e}")
+            return None
+
+    async def process_local_files_async(self, file_paths: List[str],
+                                      output_file: str = "data/local_docs_async.json",
+                                      concurrent_limit: int = None) -> Dict:
+        """Process multiple local HTML files concurrently with async performance"""
+
+        logger.info(f"🚀 Starting async processing of {len(file_paths)} local HTML files...")
+
+        # Use configured concurrent limit or default to half of web scraping limit
+        if concurrent_limit is None:
+            concurrent_limit = max(2, self.config.concurrent_limit // 2)
+
+        semaphore = asyncio.Semaphore(concurrent_limit)
+        structured_docs = []
+        failed_files = []
+
+        async def process_single_file(file_path: str) -> Optional[Dict]:
+            """Process a single file with semaphore control"""
+            async with semaphore:
+                self.metrics.total_requests += 1
+
+                try:
+                    doc_structure = await self.extract_from_local_file_async(file_path)
+                    if doc_structure:
+                        self.metrics.urls_processed += 1
+                        return doc_structure
+                    else:
+                        self.metrics.urls_failed += 1
+                        failed_files.append((file_path, "Failed to extract content"))
+                        return None
+
+                except Exception as e:
+                    self.metrics.urls_failed += 1
+                    failed_files.append((file_path, str(e)))
+                    logger.error(f"Error processing {file_path}: {e}")
+                    return None
+
+        # Process all files concurrently
+        logger.info(f"⚡ Processing files with {concurrent_limit} concurrent workers...")
+
+        tasks = [process_single_file(file_path) for file_path in file_paths]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Collect successful results
+        for result in results:
+            if result and not isinstance(result, Exception):
+                structured_docs.append(result)
+
+        if not structured_docs:
+            logger.warning("No files were successfully processed")
+            return {"metadata": {"error": "No files processed"}, "documents": [], "semantic_chunks": []}
+
+        logger.info(f"🧠 Creating semantic chunks from {len(structured_docs)} documents...")
+        semantic_chunks = self._create_semantic_chunks_fast(structured_docs)
+
+        # Create output data structure matching sync version
+        output_data = {
+            "metadata": {
+                "processing_timestamp": time.time(),
+                "source_type": "local_files_async",
+                "file_paths": file_paths,
+                "total_files": len(structured_docs),
+                "total_chunks": len(semantic_chunks),
+                "concurrent_limit": concurrent_limit,
+                "failed_files": len(failed_files),
+                "processing_time": self.metrics.duration(),
+                "files_per_second": len(structured_docs) / max(self.metrics.duration(), 0.1)
+            },
+            "documents": structured_docs,
+            "semantic_chunks": semantic_chunks
+        }
+
+        # Save results
+        await self.save_results_async(output_data, output_file)
+
+        logger.info(f"✅ Async local file processing complete!")
+        logger.info(f"   📊 Statistics:")
+        logger.info(f"      Files processed: {len(structured_docs)}")
+        logger.info(f"      Files failed: {len(failed_files)}")
+        logger.info(f"      Semantic chunks: {len(semantic_chunks)}")
+        logger.info(f"      Processing time: {self.metrics.duration():.1f}s")
+        logger.info(f"      Processing rate: {output_data['metadata']['files_per_second']:.1f} files/sec")
+
+        if failed_files:
+            logger.warning(f"⚠️  Failed files:")
+            for file_path, error in failed_files[:5]:  # Show first 5 failures
+                logger.warning(f"      {Path(file_path).name}: {error}")
+            if len(failed_files) > 5:
+                logger.warning(f"      ... and {len(failed_files) - 5} more")
+
+        if semantic_chunks:
+            avg_chunk_size = sum(c['word_count'] for c in semantic_chunks) / len(semantic_chunks)
+            logger.info(f"      Average chunk size: {avg_chunk_size:.0f} words")
+
+        return output_data
+
     async def save_results_async(self, results: Dict, output_file: str):
         """Save results asynchronously"""
         import os
@@ -500,7 +675,32 @@ class AsyncWebScraper:
         await self.close()
 
 
-# Convenience function for easy usage
+    def find_html_files(self, directory: str, pattern: str = "*.html") -> List[str]:
+        """Find HTML files in a directory (supports glob patterns)"""
+        import glob
+
+        directory_path = Path(directory)
+        if not directory_path.exists():
+            logger.warning(f"Directory not found: {directory}")
+            return []
+
+        # Support both *.html and *.htm
+        html_files = []
+        for ext in ['*.html', '*.htm']:
+            html_files.extend(glob.glob(str(directory_path / ext)))
+
+        # Also search subdirectories if pattern includes **
+        if '**' in pattern:
+            for ext in ['*.html', '*.htm']:
+                html_files.extend(glob.glob(str(directory_path / '**' / ext), recursive=True))
+
+        html_files = sorted(list(set(html_files)))  # Remove duplicates and sort
+        logger.info(f"🔍 Found {len(html_files)} HTML files in {directory}")
+
+        return html_files
+
+
+# Convenience functions for easy usage
 async def scrape_website_fast(start_urls: List[str],
                              max_pages: int = 30,
                              concurrent_limit: int = 8,
@@ -528,6 +728,30 @@ async def scrape_website_fast(start_urls: List[str],
     async with AsyncWebScraper(config) as scraper:
         results = await scraper.scrape_website_async(start_urls)
         await scraper.save_results_async(results, output_file)
+        return results
+
+
+async def process_local_files_fast(file_paths: List[str],
+                                 output_file: str = "data/fast_local_docs.json",
+                                 concurrent_limit: int = 6) -> Dict:
+    """
+    High-level async local file processing function
+
+    Args:
+        file_paths: List of HTML file paths to process
+        output_file: Output file path
+        concurrent_limit: Number of files to process concurrently
+
+    Returns:
+        Dictionary with processing results and metadata
+    """
+    config = ScrapingConfig(
+        concurrent_limit=concurrent_limit,
+        requests_per_second=20.0  # Not relevant for local files, but needed for config
+    )
+
+    async with AsyncWebScraper(config) as scraper:
+        results = await scraper.process_local_files_async(file_paths, output_file, concurrent_limit)
         return results
 
 
