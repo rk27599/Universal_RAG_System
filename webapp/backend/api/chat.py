@@ -141,6 +141,11 @@ async def send_message(
         end_time = datetime.now()
         response_time = (end_time - start_time).total_seconds()
 
+        # Calculate average similarity from actual sources (not hardcoded)
+        avg_similarity = None
+        if request.useRAG and document_sources:
+            avg_similarity = sum(s['similarity'] for s in document_sources) / len(document_sources)
+
         # Save assistant message
         assistant_message = Message(
             conversation_id=conversation.id,
@@ -149,7 +154,7 @@ async def send_message(
             model_name=request.model,
             response_time=response_time,
             token_count=len(ai_response.split()),
-            similarity_score=0.85 if request.useRAG else None,
+            similarity_score=avg_similarity,
             context_documents=document_sources if document_sources else None
         )
         db.add(assistant_message)
@@ -675,6 +680,11 @@ async def send_message(sid, data):
             # Stop typing indicator
             await sio.emit('typing_stop', {}, room=sid)
 
+            # Calculate average similarity from actual sources (not hardcoded)
+            avg_similarity = None
+            if use_rag and document_sources:
+                avg_similarity = sum(s['similarity'] for s in document_sources) / len(document_sources)
+
             # Save assistant message to database
             assistant_message = Message(
                 conversation_id=conversation.id,
@@ -683,7 +693,7 @@ async def send_message(sid, data):
                 model_name=model,
                 response_time=response_time,
                 token_count=len(full_response.split()),
-                similarity_score=0.85 if use_rag else None,
+                similarity_score=avg_similarity,
                 context_documents=document_sources if document_sources else None
             )
             db.add(assistant_message)
