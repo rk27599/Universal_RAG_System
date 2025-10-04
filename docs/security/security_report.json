@@ -1,0 +1,24 @@
+{
+  "timestamp": "Sat Sep 27 04:16:03 IST 2025",
+  "project_root": "/home/rkpatel/RAG",
+  "violations": [],
+  "warnings": [
+    {
+      "severity": "WARNING",
+      "message": "Could not check PostgreSQL status",
+      "file": null,
+      "timestamp": "Sat Sep 27 04:16:03 IST 2025"
+    },
+    {
+      "severity": "WARNING",
+      "message": "Could not check network connections",
+      "file": null,
+      "timestamp": "Sat Sep 27 04:16:03 IST 2025"
+    }
+  ],
+  "summary": {
+    "total_violations": 0,
+    "total_warnings": 2,
+    "security_score": 96
+  }
+}

@@ -208,6 +208,7 @@ class RAGSystem:
                         web_data = json.load(f)
                     all_structured_docs.extend(web_data.get('documents', []))
                 else:
+                    pass
 
             # Process local files if provided
             if local_files:
@@ -224,6 +225,7 @@ class RAGSystem:
                         local_data = json.load(f)
                     all_structured_docs.extend(local_data.get('documents', []))
                 else:
+                    pass
 
             if not all_structured_docs:
                 return False
@@ -291,6 +293,7 @@ class RAGSystem:
                     os.remove(file_path)
                     files_removed.append(file_path)
                 except Exception as e:
+                    pass
 
         if files_removed:
             return True
@@ -345,6 +348,7 @@ class RAGSystem:
                 return True
 
             except Exception as e:
+                pass
 
         # Process chunks
 
@@ -419,6 +423,7 @@ class RAGSystem:
 
 
         except Exception as e:
+            pass
 
         return True
 
@@ -630,57 +635,5 @@ Please provide a detailed answer based on the context provided. If the context d
             return f"Error connecting to Ollama: {e}. Make sure Ollama is running with 'ollama serve'."
 
 
-def main():
-    """Example usage of the RAG system"""
 
-    print("🚀 RAG System - Example Usage")
-    print("=" * 40)
-
-    # Initialize the system
-    rag_system = RAGSystem()
-
-    # Scrape a website and process it
-    start_urls = [
-        "https://pytorch.org/docs/stable/",  # Example: FastAPI documentation
-    ]
-
-    # Scrape and process
-    success = rag_system.scrape_and_process_website(
-        start_urls=start_urls,
-        max_pages=100,  # Small number for testing
-        output_file="data/website_docs.json",
-        same_domain_only=True,
-        max_depth=2
-    )
-
-    if success:
-        # Test some queries
-        test_queries = [
-            "How to create a tensor?",
-            "What is automatic differentiation?",
-            "How to build neural networks?",
-            "Training a model with optimizers",
-            "DataLoader and datasets usage",
-            "GPU acceleration with CUDA",
-            "Model parallelism and distributed training"
-        ]
-
-        print(f"\n🔍 Testing {len(test_queries)} queries...")
-        for query in test_queries:
-            print(f"\n" + "="*60)
-            print(f"Query: {query}")
-            result = rag_system.demo_query(query, top_k=3)
-            print(result[:500] + "..." if len(result) > 500 else result)
-
-    else:
-        print("❌ Failed to scrape and process website")
-
-    print("\n💡 Usage Tips:")
-    print("• Use scrape_and_process_website() for new websites")
-    print("• Use process_structured_documents() for existing scraped data")
-    print("• Use demo_query() for retrieval testing")
-    print("• Use rag_query() with Ollama for full answers")
-
-
-if __name__ == "__main__":
-    main()
+# Demo code moved to examples/rag_system_demo.py

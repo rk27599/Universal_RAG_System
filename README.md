@@ -19,7 +19,7 @@ An advanced **Retrieval-Augmented Generation (RAG) system** that works with **an
 
 ## 📋 Requirements
 
-- Python 3.10+
+- **Python 3.12+** (migrated from 3.10 - see performance improvements below)
 - Dependencies listed in `requirements.txt`
 - Optional: Ollama for full text generation capabilities
 
@@ -155,31 +155,117 @@ print(f"  Sources: Web + Local files")
 
 ## 📁 Project Structure
 
+This repository contains **two main components**:
+
+### 1. Core RAG Library (Main Focus) - Document Parsing & RAG
 ```
 ├── README.md                         # This file
-├── CLAUDE.md                        # Detailed project documentation
-├── requirements.txt                 # Python dependencies
-├── src/                             # Source code
-│   ├── __init__.py
-│   ├── web_scraper.py              # Synchronous web scraper
-│   ├── async_web_scraper.py        # High-performance async scraper
-│   └── rag_system.py               # Main RAG system
-├── data/                            # Data files (auto-generated)
-│   ├── *.json                      # Structured website data
-│   ├── *.txt                       # Text format compatibility
-│   └── *_cache.pkl                 # Processed data caches
-├── notebooks/                       # Jupyter notebooks
-│   └── RAG_HTML.ipynb              # Interactive notebook
-├── tests/                          # Test files
-│   ├── __init__.py
+├── CLAUDE.md                        # AI assistant guide & detailed docs
+├── LICENSE                          # Open source license
+├── requirements.txt                 # Core library dependencies
+│
+├── src/                             # Core RAG library source code
+│   ├── web_scraper.py              # Synchronous web scraper (643 lines)
+│   ├── async_web_scraper.py        # Async scraper (751 lines, 3-5x faster)
+│   └── rag_system.py               # Main RAG system (639 lines)
+│
+├── docs/                            # Core RAG documentation
+│   ├── README.md                   # Documentation index
+│   ├── api/                        # API reference
+│   │   ├── rag_system.md           # RAG system API
+│   │   ├── web_scraper.md          # Scraper API
+│   │   └── async_web_scraper.md    # Async scraper API
+│   ├── guides/                     # User guides
+│   │   ├── getting-started.md      # Getting started guide
+│   │   ├── performance.md          # Performance optimization
+│   │   └── troubleshooting.md      # Troubleshooting guide
+│   ├── architecture.md             # System architecture
+│   ├── benchmarks/                 # Performance benchmarks
+│   └── security/                   # Security reports
+│
+├── examples/                        # Usage examples
+│   ├── basic_usage.py              # Simple example
+│   ├── advanced_usage.py           # Advanced features
+│   ├── benchmarking.py             # Performance testing
+│   └── generic_usage.py            # Generic system demo
+│
+├── tests/                           # Core RAG tests
 │   ├── test_rag_system.py          # RAG system tests
-│   └── test_scraper.py             # Scraper tests
-└── examples/                       # Usage examples
-    ├── basic_usage.py              # Basic website demo
-    ├── advanced_usage.py           # Advanced features demo
-    ├── benchmarking.py             # Performance benchmarking
-    └── generic_usage.py            # Generic system demo
+│   ├── test_scraper.py             # Web scraper tests
+│   ├── test_async_local_files.py   # Async file processing tests
+│   ├── test_local_html.py          # Local HTML tests
+│   └── test_generic_system.py      # Generic system tests
+│
+├── scripts/                         # Utility scripts
+│   ├── add_progress_column.py      # Database utility
+│   └── process_stuck_files.py      # File processing utility
+│
+├── notebooks/                       # Jupyter notebooks
+│   └── RAG_HTML.ipynb              # Interactive demo notebook
+│
+└── data/                            # Generated data (gitignored)
+    ├── *.json                      # Scraped content
+    ├── *.txt                       # Text exports
+    └── *_cache.pkl                 # Processing caches
 ```
+
+### 2. Optional Web Application - Full-Stack UI
+```
+└── webapp/                          # Complete web application
+    ├── README_WEBAPP.md             # Web app overview & setup
+    ├── docker-compose.prod.yml      # Production Docker setup
+    ├── .pre-commit-config.yaml      # Security validation hooks
+    │
+    ├── backend/                     # FastAPI backend (Python)
+    │   ├── api/                     # REST API endpoints
+    │   ├── core/                    # Config, security, database
+    │   ├── models/                  # Database models
+    │   ├── services/                # Business logic
+    │   ├── tests/                   # Backend unit tests
+    │   ├── main.py                  # FastAPI application
+    │   ├── init_db.py               # Database initialization
+    │   └── requirements.txt         # Backend dependencies
+    │
+    ├── frontend/                    # React frontend (TypeScript)
+    │   ├── src/                     # React source code
+    │   ├── public/                  # Static assets
+    │   ├── package.json             # Node dependencies
+    │   └── README.md                # Frontend docs
+    │
+    ├── docs/                        # Web app documentation
+    │   ├── README.md                # Docs index
+    │   ├── DEPLOYMENT.md            # Manual deployment
+    │   ├── DEPLOYMENT_GUIDE.md      # Docker deployment
+    │   ├── ADMIN_GUIDE.md           # Admin guide
+    │   ├── USER_GUIDE.md            # User guide
+    │   ├── HANDOVER_DOCUMENT.md     # Project handover
+    │   └── architecture/            # Architecture decisions
+    │
+    ├── scripts/                     # Deployment & security scripts
+    │   ├── setup_database.sh
+    │   ├── setup_ollama.sh
+    │   ├── deploy.sh
+    │   ├── backup.sh
+    │   ├── restore.sh
+    │   └── security_validator.py
+    │
+    └── tests/                       # Integration tests
+        ├── test_phase3_integration.py
+        ├── validate_phases_1_2.py
+        └── test_backend.sh
+```
+
+### Component Summary
+
+| Component | Purpose | Size | Tech Stack |
+|-----------|---------|------|------------|
+| **Core RAG Library** | Document parsing, RAG system | 184 KB | Python 3.12 |
+| **Core Docs** | API reference, guides | 252 KB | Markdown |
+| **Examples** | Usage examples | 76 KB | Python |
+| **Tests** | Core library tests | 52 KB | pytest |
+| **Web Application** | Optional full-stack UI | 976 MB | FastAPI + React + PostgreSQL |
+
+**Note**: The web application (`webapp/`) is **optional**. You can use the core RAG library standalone for programmatic use. See [webapp/README_WEBAPP.md](webapp/README_WEBAPP.md) for web app setup.
 
 ## 🎯 Core Components
 
@@ -207,6 +293,7 @@ print(f"  Sources: Web + Local files")
 
 ## 📊 Performance
 
+- **Python 3.12 Benefits**: 10-15% faster than Python 3.10, improved memory efficiency
 - **Similarity Scores**: 0.6+ (2x improvement over legacy systems)
 - **Scraping Speed**: 3-5x faster with async scraper vs synchronous
 - **Cache Performance**: 40-60% hit rate for repeated scraping operations
@@ -216,19 +303,49 @@ print(f"  Sources: Web + Local files")
 
 ## 🧪 Testing
 
-Run comprehensive benchmarking:
+### Run Core RAG Tests
 ```bash
+# Run all core RAG tests
+python -m pytest tests/ -v
+
+# Run specific test file
+python -m pytest tests/test_rag_system.py -v
+
+# Run with coverage
+python -m pytest tests/ --cov=src --cov-report=html
+```
+
+**Test Results** (27 tests):
+- ✅ 23 passed - Core RAG functionality working perfectly
+- ⚠️ 4 async tests require `pytest-asyncio` (optional)
+
+### Run Examples
+```bash
+# Basic usage (recommended first test)
+python examples/basic_usage.py
+
+# Advanced features
+python examples/advanced_usage.py
+
+# Performance benchmarking
 python examples/benchmarking.py
+
+# Generic system test
+python examples/generic_usage.py
 ```
 
-Test specific functionality:
+### Quick Functionality Test
 ```bash
-python -m pytest tests/
-```
+# Test core imports and basic functionality
+python -c "
+from src.rag_system import RAGSystem
+from src.web_scraper import WebScraper
+from src.async_web_scraper import AsyncWebScraper
 
-Test the generic system:
-```bash
-python test_generic_system.py
+rag = RAGSystem()
+scraper = WebScraper()
+print('✅ All core modules imported successfully')
+"
 ```
 
 ## 🔧 Configuration

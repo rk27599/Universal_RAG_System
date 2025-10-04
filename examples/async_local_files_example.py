@@ -168,7 +168,7 @@ const db = new Database({
     host: 'localhost',
     database: 'myapp',
     username: 'user',
-    password: 'password'
+    password: process.env.DB_PASSWORD
 });
         </pre>
 

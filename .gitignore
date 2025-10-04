@@ -135,6 +135,50 @@ data/*.json
 data/*.txt
 data/*.pkl
 data/*_cache.pkl
+data/*.jsonl
+data/uploads/
 
 # Temporary test files (in root directory only)
 /test_*.py
+
+# Database files (NEVER commit - can be very large)
+*.db
+*.db-*
+*.db-journal
+*.db-shm
+*.db-wal
+app/*.db
+app/*.db-*
+/test.db
+/app.db
+
+# Python cache (comprehensive - prevent all __pycache__)
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+
+# Frontend build artifacts and dependencies
+frontend/node_modules/
+frontend/build/
+frontend/dist/
+frontend/.env.local
+frontend/.env.*.local
+
+# WebApp frontend (NEW LOCATION after reorganization)
+webapp/frontend/node_modules/
+webapp/frontend/build/
+webapp/frontend/dist/
+webapp/frontend/.env.local
+webapp/frontend/.env.*.local
+
+# WebApp backend
+webapp/backend/venv/
+webapp/backend/.env
+webapp/backend/*.db
+webapp/backend/data/
+
+# OS and editor files
+*~
+*.swp
+*.swo

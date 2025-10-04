@@ -73,9 +73,10 @@ jupyter lab notebooks/RAG_HTML.ipynb
 ```
 
 ### Python Environment
-- Python 3.10+
+- Python 3.12+ (✅ Migrated from 3.10 - October 2025)
 - Core dependencies: requests, sklearn, beautifulsoup4, numpy, pickle
 - Optional: Ollama for full text generation
+- Performance: ~10-15% faster than Python 3.10
 
 ### Working with the RAG System
 

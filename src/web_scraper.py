@@ -135,6 +135,7 @@ class WebScraper:
                 time.sleep(1)
 
             except Exception as e:
+                pass
 
         return discovered_urls
 
@@ -639,81 +640,4 @@ class WebScraper:
         return combined_output
 
 
-def main():
-    """Example usage of the generic web scraper with local and web sources"""
-
-    print("🔍 WebScraper Usage Examples\n")
-
-    # Example 1: Process local HTML files
-    print("=" * 50)
-    print("Example 1: Processing Local HTML Files")
-    print("=" * 50)
-
-    scraper_local = WebScraper(local_mode=True)
-
-    # Find HTML files in current directory (example)
-    # html_files = scraper_local.find_html_files(".", "**/*.html")
-
-    # For demonstration, using example paths
-    html_files = [
-        # Add your local HTML file paths here
-        # Example: "/path/to/your/file.html"
-    ]
-
-    if html_files:
-        local_result = scraper_local.process_local_files(
-            html_files,
-            output_file="data/local_html_docs.json"
-        )
-        print(f"✅ Processed {len(local_result.get('documents', []))} local HTML files")
-    else:
-        print("⚠️ No HTML files found. Add file paths to html_files list.")
-
-    # Example 2: Web scraping (original functionality)
-    print("\n" + "=" * 50)
-    print("Example 2: Web Scraping")
-    print("=" * 50)
-
-    scraper_web = WebScraper()
-
-    start_urls = [
-        "https://fastapi.tiangolo.com/",  # Example: FastAPI docs
-    ]
-
-    web_result = scraper_web.scrape_website(
-        start_urls=start_urls,
-        max_pages=10,  # Small limit for testing
-        output_file="data/web_docs.json",
-        same_domain_only=True,
-        max_depth=1
-    )
-
-    # Example 3: Mixed processing
-    print("\n" + "=" * 50)
-    print("Example 3: Mixed Sources Processing")
-    print("=" * 50)
-
-    scraper_mixed = WebScraper()
-
-    if html_files:
-        mixed_result = scraper_mixed.process_mixed_sources(
-            web_urls=["https://fastapi.tiangolo.com/"],
-            local_files=html_files[:2],  # Limit local files for demo
-            output_file="data/mixed_sources.json",
-            max_pages=5
-        )
-        print(f"✅ Mixed processing complete with {len(mixed_result.get('documents', []))} total documents")
-    else:
-        print("⚠️ Skipping mixed processing - no local HTML files provided")
-
-    print(f"\n🎉 All examples completed! Check the data/ directory for output files.")
-
-    return {
-        "local_files_processed": len(html_files) if html_files else 0,
-        "web_scraping_completed": True,
-        "mixed_processing": bool(html_files)
-    }
-
-
-if __name__ == "__main__":
-    main()
+# Demo code moved to examples/web_scraper_demo.py

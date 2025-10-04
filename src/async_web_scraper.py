@@ -664,14 +664,7 @@ class AsyncWebScraper:
         if self.session:
             await self.session.close()
 
-    async def __aenter__(self):
-        """Async context manager entry"""
-        await self.initialize()
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit"""
-        await self.close()
+    # Note: __aenter__ and __aexit__ are defined earlier (lines 84-91)
 
     @staticmethod
     async def process_local_files_fast(file_paths: List[str],
@@ -754,43 +747,5 @@ async def scrape_website_fast(start_urls: List[str],
 
 
 # Example usage and testing
-async def main():
-    """Example usage of the async web scraper"""
-    print("🚀 AsyncWebScraper Performance Test")
-    print("=" * 50)
 
-    start_urls = ["https://fastapi.tiangolo.com/"]
-
-    # Test with different performance settings
-    configs = [
-        {"concurrent_limit": 4, "requests_per_second": 5.0, "name": "Conservative"},
-        {"concurrent_limit": 8, "requests_per_second": 10.0, "name": "Balanced"},
-        {"concurrent_limit": 12, "requests_per_second": 15.0, "name": "Aggressive"}
-    ]
-
-    for i, config_params in enumerate(configs):
-        print(f"\n🧪 Test {i+1}: {config_params['name']} Mode")
-        print("-" * 30)
-
-        start_time = time.time()
-
-        results = await scrape_website_fast(
-            start_urls=start_urls,
-            max_pages=15,  # Small test
-            concurrent_limit=config_params["concurrent_limit"],
-            requests_per_second=config_params["requests_per_second"],
-            output_file=f"data/test_{config_params['name'].lower()}_docs.json"
-        )
-
-        duration = time.time() - start_time
-        metadata = results.get("metadata", {})
-
-        print(f"⏱️ Duration: {duration:.2f}s")
-        print(f"📄 Pages: {metadata.get('total_pages', 0)}")
-        print(f"🧩 Chunks: {metadata.get('total_chunks', 0)}")
-        print(f"🚀 Avg RPS: {metadata.get('requests_per_second', 0):.2f}")
-        print(f"✅ Success Rate: {metadata.get('success_rate', 0):.1f}%")
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
+# Demo code moved to examples/async_scraper_demo.py
