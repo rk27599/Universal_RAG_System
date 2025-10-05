@@ -48,6 +48,11 @@ export interface Document {
   processingError?: string;
   embeddingsEnabled?: boolean;
   processingMethod?: string;
+  sourceType?: string;
+  discoveryStats?: {
+    discoveredFiles: string[];
+    totalFiles: number;
+  };
 }
 
 export interface User {
@@ -153,17 +158,42 @@ class ApiService {
   }
 
   // Document management
-  async uploadDocument(file: File, metadata?: any): Promise<ApiResponse<Document>> {
+  async uploadDocument(file: File, metadata?: any, chunkSize?: number): Promise<ApiResponse<Document>> {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (metadata) {
+      formData.append('metadata', JSON.stringify(metadata));
+    }
+    formData.append('chunk_size', String(chunkSize || 2000));
+
+    const response = await this.client.post('/api/documents/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  }
+
+  async uploadHtmlDocumentation(file: File, metadata?: any): Promise<ApiResponse<Document & { discoveryStats?: any }>> {
     const formData = new FormData();
     formData.append('file', file);
     if (metadata) {
       formData.append('metadata', JSON.stringify(metadata));
     }
 
-    const response = await this.client.post('/api/documents/upload', formData, {
+    const response = await this.client.post('/api/documents/upload-html-docs', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+    });
+    return response.data;
+  }
+
+  async uploadHtmlFolder(folderPath: string, metadata?: any, chunkSize?: number): Promise<ApiResponse<Document & { discoveryStats?: any }>> {
+    const response = await this.client.post('/api/documents/upload-html-folder', {
+      folder_path: folderPath,
+      metadata,
+      chunk_size: chunkSize || 2000
     });
     return response.data;
   }
@@ -180,6 +210,11 @@ class ApiService {
 
   async deleteDocument(id: string): Promise<ApiResponse> {
     const response = await this.client.delete(`/api/documents/${id}`);
+    return response.data;
+  }
+
+  async exportDocumentChunks(id: string): Promise<ApiResponse<any>> {
+    const response = await this.client.get(`/api/documents/${id}/export-chunks`);
     return response.data;
   }
 
@@ -273,6 +308,11 @@ class ApiService {
 
   async updateUserSettings(settings: any): Promise<ApiResponse<any>> {
     const response = await this.client.put('/api/settings', settings);
+    return response.data;
+  }
+
+  async resetUserSettings(): Promise<ApiResponse<any>> {
+    const response = await this.client.post('/api/settings/reset');
     return response.data;
   }
 }
