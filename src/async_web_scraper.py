@@ -326,12 +326,14 @@ class AsyncWebScraper:
                         elif element.name == 'blockquote':
                             text = f"Quote:\n{text}"
 
-                        current_section["content"].append(text[:1000])
+                        # No truncation - let chunking logic handle size control
+                        current_section["content"].append(text)
 
                 elif element.name == 'table':
                     table_text = extract_table_text(element)
                     if table_text:
-                        current_section["content"].append(f"Table:\n{table_text[:1000]}")
+                        # No truncation - let chunking logic handle size control
+                        current_section["content"].append(f"Table:\n{table_text}")
 
             # Add last section
             if current_section["content"]:
@@ -348,6 +350,7 @@ class AsyncWebScraper:
             }
 
         except Exception as e:
+            logger.error(f"Error extracting structured content from {url}: {e}", exc_info=True)
             return None
 
     async def _process_url(self, url: str, depth: int) -> Tuple[Optional[Dict], List[str]]:

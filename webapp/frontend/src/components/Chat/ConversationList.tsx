@@ -283,9 +283,9 @@ const ConversationList: React.FC<ConversationListProps> = ({
         aria-label="new conversation"
         onClick={() => setShowNewConversationDialog(true)}
         sx={{
-          position: 'absolute',
-          bottom: 16,
-          right: 16,
+          position: 'fixed',
+          bottom: 24,
+          left: { xs: 244, md: 535 },  // Moved 20-24px to the left for better spacing
           zIndex: 1000,
         }}
       >

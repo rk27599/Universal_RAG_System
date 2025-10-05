@@ -7,7 +7,7 @@ export const config = {
   // API Configuration - LOCALHOST ONLY
   api: {
     baseUrl: process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000',
-    timeout: 30000,
+    timeout: 60000,  // Increased to 60s for large file processing
     retries: 3
   },
 

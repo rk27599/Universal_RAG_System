@@ -3,7 +3,7 @@ Documents API - File Upload, Processing, and RAG Search
 Handles document management with chunking, embedding, and retrieval
 """
 
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Query
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Query, Body, Form
 from pydantic import BaseModel
 from typing import List, Optional
 from sqlalchemy.orm import Session
@@ -55,17 +55,22 @@ class SearchResult(BaseModel):
 @router.post("/upload")
 async def upload_document(
     file: UploadFile = File(...),
+    chunk_size: int = Form(2000),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Upload and process a document (HTML, HTM, or TXT)
+    Upload and process a document (HTML, HTM, TXT, JSON, or JSONL)
 
     The document will be processed asynchronously:
     1. Content extraction using intelligent HTML parsing
-    2. Semantic chunking based on document structure
+    2. Semantic chunking based on document structure (configurable chunk size)
     3. Vector embedding generation for each chunk
     4. Storage in database with metadata
+
+    Args:
+        file: Document file to upload
+        chunk_size: Maximum characters per chunk (default: 2000, range: 500-10000)
     """
 
     # Create document processing service
@@ -75,7 +80,7 @@ async def upload_document(
     embeddings_enabled = service.embedding_service is not None
 
     # Process uploaded file
-    document, error = await service.process_uploaded_file(file)
+    document, error = await service.process_uploaded_file(file, chunk_size=chunk_size)
 
     if error:
         raise HTTPException(status_code=400, detail=error)
@@ -106,6 +111,154 @@ async def upload_document(
     }
 
 
+@router.post("/upload-html-docs")
+async def upload_html_documentation(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Upload and process HTML documentation by discovering and processing linked .htm/.html files
+
+    The home/index .htm file will be parsed to discover all linked HTML files:
+    1. Parse home file to extract all internal .htm/.html links
+    2. Discover all related documentation files
+    3. Process all files together as a documentation collection
+    4. Generate semantic chunks and embeddings
+    5. Store as searchable knowledge base
+
+    Note: Currently processes only the home file. In future versions,
+    will support uploading entire documentation directories.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    try:
+        logger.info(f"Received HTML documentation upload: {file.filename} ({file.content_type})")
+
+        # Create document processing service
+        service = DocumentProcessingService(db, current_user.id)
+
+        # Check if embeddings are available
+        embeddings_enabled = service.embedding_service is not None
+
+        # Process HTML documentation
+        logger.info("Starting HTML documentation processing...")
+        document, error, stats = await service.process_local_html_documentation(file)
+
+        if error:
+            logger.error(f"HTML documentation processing failed: {error}")
+            raise HTTPException(status_code=400, detail=error)
+
+        if not document:
+            logger.error("No document returned from processing (but no error)")
+            raise HTTPException(status_code=500, detail="Failed to create document record")
+
+        logger.info(f"HTML documentation processed successfully: {document.id}")
+
+        # Build response with discovery stats
+        return {
+            "success": True,
+            "data": {
+                "id": document.id,
+                "title": document.title,
+                "filename": document.original_filename,
+                "size": document.file_size,
+                "uploadedAt": document.created_at.isoformat(),
+                "status": document.processing_status,
+                "chunksCount": document.total_chunks,
+                "embeddingsEnabled": embeddings_enabled,
+                "processingMethod": "semantic_embeddings" if embeddings_enabled else "tfidf_fallback",
+                "discoveryStats": stats
+            },
+            "message": f"HTML documentation uploaded. Discovered {stats['total_files_discovered']} files. Processing in background."
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in HTML documentation upload: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+class HtmlFolderRequest(BaseModel):
+    folder_path: str
+    metadata: Optional[dict] = None
+    chunk_size: Optional[int] = 2000  # Default 2000 characters
+
+
+@router.post("/upload-html-folder")
+async def upload_html_folder(
+    request: HtmlFolderRequest = Body(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Process all HTML files in a folder and its subdirectories
+
+    Recursively finds and processes all .htm/.html files in the specified folder:
+    1. Scan folder and all subfolders for HTML files
+    2. Process all files together as a documentation collection
+    3. Generate semantic chunks and embeddings
+    4. Store as searchable knowledge base
+
+    Supports both Windows and Unix paths. Windows paths are automatically converted to WSL paths.
+
+    Example paths:
+    - Windows: C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\arm64\\AccChecker
+    - Unix/WSL: /mnt/c/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/arm64/AccChecker
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    try:
+        logger.info(f"Received HTML folder processing request: {request.folder_path}")
+
+        # Create document processing service
+        service = DocumentProcessingService(db, current_user.id)
+
+        # Check if embeddings are available
+        embeddings_enabled = service.embedding_service is not None
+
+        # Process HTML folder
+        logger.info(f"Starting HTML folder processing with chunk_size={request.chunk_size}...")
+        document, error, stats = await service.process_html_folder(request.folder_path, request.metadata, request.chunk_size)
+
+        if error:
+            logger.error(f"HTML folder processing failed: {error}")
+            raise HTTPException(status_code=400, detail=error)
+
+        if not document:
+            logger.error("No document returned from processing (but no error)")
+            raise HTTPException(status_code=500, detail="Failed to create document record")
+
+        logger.info(f"HTML folder processed successfully: {document.id}")
+
+        # Build response with discovery stats
+        return {
+            "success": True,
+            "data": {
+                "id": document.id,
+                "title": document.title,
+                "filename": document.original_filename,
+                "size": document.file_size,
+                "uploadedAt": document.created_at.isoformat(),
+                "status": document.processing_status,
+                "chunksCount": document.total_chunks,
+                "embeddingsEnabled": embeddings_enabled,
+                "processingMethod": "semantic_embeddings" if embeddings_enabled else "tfidf_fallback",
+                "discoveryStats": stats
+            },
+            "message": f"HTML folder processed. Found {stats['total_files_discovered']} files, processed {stats['total_files_processed']} files. Processing in background."
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in HTML folder processing: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
 @router.get("/")
 async def get_documents(
     skip: int = Query(0, ge=0),
@@ -125,7 +278,7 @@ async def get_documents(
     # Format response
     data = []
     for doc in documents:
-        data.append({
+        doc_data = {
             "id": doc.id,
             "title": doc.title,
             "filename": doc.original_filename,
@@ -135,8 +288,18 @@ async def get_documents(
             "progress": doc.processing_progress,
             "chunksCount": doc.total_chunks,
             "processingTime": doc.processing_duration,
-            "processingError": doc.processing_error
-        })
+            "processingError": doc.processing_error,
+            "sourceType": doc.source_type
+        }
+
+        # Add discovery stats for HTML documentation
+        if doc.source_type == "html_documentation" and doc.processing_config:
+            doc_data["discoveryStats"] = {
+                "discoveredFiles": doc.processing_config.get("discovered_files", []),
+                "totalFiles": doc.processing_config.get("total_files", 0)
+            }
+
+        data.append(doc_data)
 
     return {
         "success": True,
@@ -167,24 +330,35 @@ async def get_document(
     document.increment_access_count()
     db.commit()
 
+    # Include discovery stats for HTML documentation
+    response_data = {
+        "id": document.id,
+        "title": document.title,
+        "filename": document.original_filename,
+        "size": document.file_size,
+        "uploadedAt": document.created_at.isoformat(),
+        "status": document.processing_status,
+        "progress": document.processing_progress,
+        "chunksCount": document.total_chunks,
+        "totalCharacters": document.total_characters,
+        "totalTokens": document.total_tokens,
+        "processingTime": document.processing_duration,
+        "processingError": document.processing_error,
+        "accessCount": document.access_count,
+        "processingSummary": document.get_processing_summary(),
+        "sourceType": document.source_type
+    }
+
+    # Add discovery stats for HTML documentation
+    if document.source_type == "html_documentation" and document.processing_config:
+        response_data["discoveryStats"] = {
+            "discoveredFiles": document.processing_config.get("discovered_files", []),
+            "totalFiles": document.processing_config.get("total_files", 0)
+        }
+
     return {
         "success": True,
-        "data": {
-            "id": document.id,
-            "title": document.title,
-            "filename": document.original_filename,
-            "size": document.file_size,
-            "uploadedAt": document.created_at.isoformat(),
-            "status": document.processing_status,
-            "progress": document.processing_progress,
-            "chunksCount": document.total_chunks,
-            "totalCharacters": document.total_characters,
-            "totalTokens": document.total_tokens,
-            "processingTime": document.processing_duration,
-            "processingError": document.processing_error,
-            "accessCount": document.access_count,
-            "processingSummary": document.get_processing_summary()
-        },
+        "data": response_data,
         "message": "Document retrieved successfully"
     }
 
@@ -210,6 +384,37 @@ async def delete_document(
     return {
         "success": True,
         "message": "Document deleted successfully"
+    }
+
+
+@router.get("/{document_id}/export-chunks")
+async def export_document_chunks(
+    document_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Export all extracted chunks from a document
+
+    Returns the processed content showing exactly what was extracted and chunked
+    from the original document. Useful for analyzing extraction quality and
+    debugging the RAG pipeline.
+
+    Returns:
+        JSON with document metadata and all chunks with their content,
+        section hierarchy, and extraction metadata
+    """
+
+    service = DocumentProcessingService(db, current_user.id)
+    export_data, error = service.export_document_chunks(document_id)
+
+    if error:
+        raise HTTPException(status_code=404, detail=error)
+
+    return {
+        "success": True,
+        "data": export_data,
+        "message": "Document chunks exported successfully"
     }
 
 

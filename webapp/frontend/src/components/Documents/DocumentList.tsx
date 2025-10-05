@@ -317,18 +317,22 @@ const DocumentList: React.FC<DocumentListProps> = ({
                           {document.title}
                         </Typography>
                       </Tooltip>
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                          display: 'block',
-                        }}
-                      >
-                        {document.filename}
-                      </Typography>
+                      {/* Only show filename for regular uploads, not for HTML documentation */}
+                      {(document as any).sourceType !== 'html_documentation' &&
+                       (document as any).sourceType !== 'html_folder' && (
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            display: 'block',
+                          }}
+                        >
+                          {document.filename}
+                        </Typography>
+                      )}
                     </Box>
                     <IconButton
                       size="small"
@@ -342,6 +346,18 @@ const DocumentList: React.FC<DocumentListProps> = ({
                   <Box sx={{ mb: 2 }}>
                     {getStatusChip(document.status)}
                   </Box>
+
+                  {/* HTML Documentation Discovery Stats */}
+                  {(document as any).sourceType === 'html_documentation' && (document as any).discoveryStats && (
+                    <Box sx={{ mb: 2, p: 1, bgcolor: 'info.light', borderRadius: 1 }}>
+                      <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, fontWeight: 'bold', color: 'info.dark' }}>
+                        📚 HTML Documentation Collection
+                      </Typography>
+                      <Typography variant="caption" sx={{ display: 'block', color: 'info.dark', mt: 0.5 }}>
+                        {(document as any).discoveryStats.totalFiles} file(s) discovered
+                      </Typography>
+                    </Box>
+                  )}
 
                   {/* Processing Progress */}
                   {document.status === 'processing' && (
@@ -384,18 +400,61 @@ const DocumentList: React.FC<DocumentListProps> = ({
         open={Boolean(menuAnchor)}
         onClose={handleMenuClose}
       >
-        <MenuItem onClick={() => { /* Handle view */ handleMenuClose(); }}>
+        <MenuItem onClick={() => {
+          if (selectedDocument && onDocumentSelect) {
+            onDocumentSelect(selectedDocument);
+          }
+          handleMenuClose();
+        }}>
           <ListItemIcon>
             <ViewIcon fontSize="small" />
           </ListItemIcon>
           <ListItemText>View Details</ListItemText>
         </MenuItem>
-        <MenuItem onClick={() => { /* Handle download */ handleMenuClose(); }}>
+        {/* Download Extracted Content (JSON) - Available for ALL documents */}
+        <MenuItem onClick={async () => {
+          if (selectedDocument) {
+            try {
+              const result = await apiService.exportDocumentChunks(selectedDocument.id);
+              if (result.success && result.data) {
+                const blob = new Blob([JSON.stringify(result.data, null, 2)], { type: 'application/json' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${selectedDocument.title.replace(/[^a-z0-9]/gi, '_')}_extracted_${new Date().toISOString().split('T')[0]}.json`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+              } else {
+                alert('Failed to export document chunks');
+              }
+            } catch (error) {
+              console.error('Export error:', error);
+              alert(`Error exporting document chunks: ${error}`);
+            }
+          }
+          handleMenuClose();
+        }}>
           <ListItemIcon>
             <DownloadIcon fontSize="small" />
           </ListItemIcon>
-          <ListItemText>Download</ListItemText>
+          <ListItemText>Download Extracted Content (JSON)</ListItemText>
         </MenuItem>
+        {/* Download Original File - Only for file-based uploads */}
+        {selectedDocument?.sourceType === 'file' && selectedDocument?.filename && (
+          <MenuItem onClick={() => {
+            if (selectedDocument) {
+              window.open(`/api/documents/${selectedDocument.id}/download`, '_blank');
+            }
+            handleMenuClose();
+          }}>
+            <ListItemIcon>
+              <DownloadIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Download Original File</ListItemText>
+          </MenuItem>
+        )}
         <MenuItem
           onClick={() => selectedDocument && handleDeleteClick(selectedDocument)}
           sx={{ color: 'error.main' }}

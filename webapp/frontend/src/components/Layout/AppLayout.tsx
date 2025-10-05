@@ -293,13 +293,13 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, currentPage = 'chat', o
           flexGrow: 1,
           width: { md: `calc(100% - ${drawerWidth}px)` },
           height: '100vh',
-          overflow: 'hidden',
+          overflow: 'auto',
           display: 'flex',
           flexDirection: 'column',
         }}
       >
         <Toolbar /> {/* Spacer for AppBar */}
-        <Box sx={{ flexGrow: 1, overflow: 'hidden' }}>
+        <Box sx={{ flexGrow: 1 }}>
           {children}
         </Box>
       </Box>

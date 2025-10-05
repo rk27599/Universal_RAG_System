@@ -53,7 +53,8 @@ class DocumentProcessingService:
     async def process_uploaded_file(
         self,
         file: UploadFile,
-        metadata: Optional[Dict] = None
+        metadata: Optional[Dict] = None,
+        chunk_size: int = 2000
     ) -> Tuple[Optional[Document], Optional[str]]:
         """
         Process an uploaded file: save, extract content, chunk, embed, and store
@@ -61,6 +62,7 @@ class DocumentProcessingService:
         Args:
             file: Uploaded file from FastAPI
             metadata: Optional metadata about the document
+            chunk_size: Maximum characters per chunk (default: 2000, range: 500-10000)
 
         Returns:
             Tuple of (Document object, error message if any)
@@ -123,7 +125,7 @@ class DocumentProcessingService:
             logger.info(f"Created document record: {document.id}")
 
             # 5. Start processing asynchronously
-            asyncio.create_task(self._process_document_async(document.id, file_path))
+            asyncio.create_task(self._process_document_async(document.id, file_path, chunk_size))
 
             return document, None
 
@@ -133,13 +135,14 @@ class DocumentProcessingService:
                 file_path.unlink()  # Clean up file on error
             return None, f"Error processing file: {str(e)}"
 
-    async def _process_document_async(self, document_id: int, file_path: Path):
+    async def _process_document_async(self, document_id: int, file_path: Path, chunk_size: int = 2000):
         """
         Background task to process document content asynchronously
 
         Args:
             document_id: Database ID of document to process
             file_path: Path to uploaded file
+            chunk_size: Maximum characters per chunk (default: 2000)
         """
         start_time = datetime.utcnow()
 
@@ -186,7 +189,7 @@ class DocumentProcessingService:
             document.update_progress(25.0)
             db.commit()
 
-            chunks_data = self._create_chunks(structured_content)
+            chunks_data = self._create_chunks(structured_content, max_chunk_size=chunk_size)
 
             if not chunks_data:
                 raise ValueError("Failed to create chunks from content")
@@ -546,13 +549,13 @@ class DocumentProcessingService:
             logger.error(f"Error extracting content from {file_path}: {e}")
             return None
 
-    def _create_chunks(self, structured_content: Dict, max_chunk_size: int = 1200) -> List[Dict]:
+    def _create_chunks(self, structured_content: Dict, max_chunk_size: int = 2000) -> List[Dict]:
         """
         Create semantic chunks from structured content
 
         Args:
             structured_content: Structured document from AsyncWebScraper
-            max_chunk_size: Maximum characters per chunk
+            max_chunk_size: Maximum characters per chunk (default: 2000, range: 500-10000)
 
         Returns:
             List of chunk dictionaries with metadata
@@ -808,6 +811,565 @@ class DocumentProcessingService:
             logger.error(f"Error deleting document: {e}")
             self.db.rollback()
             return False, str(e)
+
+    def export_document_chunks(self, document_id: int) -> Tuple[Optional[Dict], Optional[str]]:
+        """
+        Export all chunks from a document with their metadata
+
+        Returns structured data showing exactly what was extracted and how it was chunked
+        """
+        try:
+            document = self.get_document(document_id)
+            if not document:
+                return None, "Document not found or access denied"
+
+            # Get all chunks for this document
+            chunks = self.db.query(Chunk).filter(
+                Chunk.document_id == document_id
+            ).order_by(Chunk.chunk_order).all()
+
+            # Build export data
+            chunks_data = []
+            for chunk in chunks:
+                chunk_info = {
+                    "order": chunk.chunk_order,
+                    "content": chunk.content,
+                    "content_type": chunk.content_type,
+                    "character_count": chunk.character_count,
+                    "word_count": chunk.word_count,
+                    "token_count": chunk.token_count,
+                    "section_hierarchy": chunk.section_hierarchy,
+                    "section_path": chunk.get_section_path(),
+                    "page_number": chunk.page_number,
+                    "extraction_metadata": chunk.extraction_metadata,
+                    "search_keywords": chunk.search_keywords,
+                    "importance_score": chunk.importance_score
+                }
+                chunks_data.append(chunk_info)
+
+            export_data = {
+                "document": {
+                    "id": document.id,
+                    "title": document.title,
+                    "filename": document.original_filename,
+                    "source_type": document.source_type,
+                    "source_url": document.source_url,
+                    "source_path": document.source_path,
+                    "total_chunks": document.total_chunks,
+                    "total_characters": document.total_characters,
+                    "total_tokens": document.total_tokens,
+                    "processing_config": document.processing_config,
+                    "extraction_metadata": document.extraction_metadata,
+                    "created_at": document.created_at.isoformat(),
+                    "processing_completed_at": document.processing_completed_at.isoformat() if document.processing_completed_at else None
+                },
+                "chunks": chunks_data,
+                "export_metadata": {
+                    "exported_at": datetime.utcnow().isoformat(),
+                    "total_chunks": len(chunks_data),
+                    "export_version": "1.0"
+                }
+            }
+
+            logger.info(f"Exported {len(chunks_data)} chunks from document {document_id}")
+            return export_data, None
+
+        except Exception as e:
+            logger.error(f"Error exporting document chunks: {e}")
+            return None, str(e)
+
+    async def process_html_folder(
+        self,
+        folder_path: str,
+        metadata: Optional[Dict] = None,
+        chunk_size: int = 2000
+    ) -> Tuple[Optional[Document], Optional[str], Optional[Dict]]:
+        """
+        Process all HTML files in a folder and its subdirectories
+
+        Args:
+            folder_path: Path to folder containing HTML documentation
+            metadata: Optional metadata about the documentation
+            chunk_size: Maximum characters per chunk (default: 2000, range: 500-10000)
+
+        Returns:
+            Tuple of (Document object, error message if any, stats dict)
+        """
+        try:
+            # 1. Convert Windows path to WSL path if needed
+            if folder_path.startswith('C:\\') or folder_path.startswith('c:\\'):
+                # Convert Windows path to WSL path
+                import subprocess
+                try:
+                    wsl_path = subprocess.check_output(['wslpath', folder_path], text=True).strip()
+                    folder_path = wsl_path
+                    logger.info(f"Converted Windows path to WSL: {folder_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to convert Windows path, using as-is: {e}")
+
+            folder = Path(folder_path)
+            if not folder.exists():
+                return None, f"Folder not found: {folder_path}", None
+
+            if not folder.is_dir():
+                return None, f"Path is not a directory: {folder_path}", None
+
+            logger.info(f"Processing HTML folder: {folder}")
+
+            # 2. Find all HTML files in folder and subdirectories
+            config = ScrapingConfig(concurrent_limit=4)
+            async with AsyncWebScraper(config) as scraper:
+                # Use find_html_files to recursively find all HTML files
+                html_files = scraper.find_html_files(str(folder), pattern="**/*.htm*")
+
+                if not html_files:
+                    return None, f"No HTML files found in folder: {folder_path}", None
+
+                logger.info(f"Found {len(html_files)} HTML files in folder")
+
+                # 3. Process all HTML files
+                all_sections = []
+                total_word_count = 0
+                processed_files = []
+
+                for file_path_str in html_files:
+                    file_path = Path(file_path_str)
+
+                    logger.info(f"Processing: {file_path.name}")
+                    doc_structure = await scraper.extract_from_local_file_async(file_path_str)
+
+                    if doc_structure:
+                        sections = doc_structure.get('sections', [])
+                        if sections:
+                            all_sections.extend(sections)
+                            processed_files.append(file_path.name)
+                            for section in sections:
+                                total_word_count += section.get('word_count', 0)
+
+                logger.info(f"Processed {len(processed_files)} files, {len(all_sections)} sections, {total_word_count} words")
+
+            if not all_sections:
+                return None, "No content extracted from HTML files", None
+
+            # 4. Create combined structured content
+            folder_name = folder.name or "HTML Documentation"
+            combined_content = {
+                'page_title': f"{folder_name} (Complete Folder)",
+                'url': f"file://{folder}",
+                'domain': 'local_html_folder',
+                'total_sections': len(all_sections),
+                'sections': all_sections,
+                'metadata': {
+                    'source_type': 'html_folder',
+                    'folder_path': str(folder),
+                    'discovered_files': html_files,
+                    'processed_files': processed_files,
+                    'total_files_discovered': len(html_files),
+                    'total_files_processed': len(processed_files),
+                    'total_word_count': total_word_count
+                }
+            }
+
+            # 5. Calculate content hash for deduplication
+            content_str = str(combined_content)
+            content_hash = hashlib.sha256(content_str.encode()).hexdigest()
+
+            # Check for duplicate
+            existing_doc = self.db.query(Document).filter(
+                Document.user_id == self.user_id,
+                Document.content_hash == content_hash,
+                Document.processing_status != "deleted"
+            ).first()
+
+            if existing_doc:
+                return None, f"Documentation already exists: {existing_doc.title}", None
+
+            # 6. Create document record
+            doc_title = metadata.get('title', f"{folder_name} Documentation") if metadata else f"{folder_name} Documentation"
+
+            document = Document(
+                user_id=self.user_id,
+                title=doc_title,
+                original_filename=f"{folder_name} (Folder)",
+                source_type="html_folder",
+                source_path=str(folder),
+                content_type="text/html",
+                file_size=len(content_str),
+                content_hash=content_hash,
+                processing_status="pending",
+                processing_config={
+                    'discovered_files': [Path(f).name for f in html_files],
+                    'total_files': len(html_files),
+                    'folder_path': str(folder),
+                    **(metadata or {})
+                }
+            )
+
+            self.db.add(document)
+            self.db.commit()
+            self.db.refresh(document)
+
+            logger.info(f"Created HTML folder documentation record: {document.id}")
+
+            # 7. Start processing asynchronously
+            asyncio.create_task(self._process_html_docs_async(document.id, combined_content, None, chunk_size))
+
+            stats = {
+                'discovered_files': [Path(f).name for f in html_files],
+                'total_files_discovered': len(html_files),
+                'total_files_processed': len(processed_files),
+                'total_sections': len(all_sections),
+                'total_words': total_word_count,
+                'folder_path': str(folder)
+            }
+
+            return document, None, stats
+
+        except Exception as e:
+            logger.error(f"Error processing HTML folder: {e}", exc_info=True)
+            return None, f"Error processing HTML folder: {str(e)}", None
+
+    async def process_local_html_documentation(
+        self,
+        home_file: UploadFile,
+        metadata: Optional[Dict] = None
+    ) -> Tuple[Optional[Document], Optional[str], Optional[Dict]]:
+        """
+        Process local HTML documentation by crawling all linked .htm/.html files
+
+        Args:
+            home_file: The home/index .htm file to start from
+            metadata: Optional metadata about the documentation
+
+        Returns:
+            Tuple of (Document object, error message if any, stats dict)
+        """
+        temp_dir = None
+        try:
+            # 1. Validate home file
+            if not home_file.filename:
+                return None, "No filename provided", None
+
+            file_ext = Path(home_file.filename).suffix.lower()
+            if file_ext not in ['.html', '.htm']:
+                return None, f"Home file must be .html or .htm, got: {file_ext}", None
+
+            # 2. Save home file to temporary directory
+            import tempfile
+            temp_dir = Path(tempfile.mkdtemp(prefix="html_docs_"))
+            home_path = temp_dir / home_file.filename
+
+            content = await home_file.read()
+            async with aiofiles.open(home_path, 'wb') as f:
+                await f.write(content)
+
+            logger.info(f"Saved home file to: {home_path}")
+
+            # 3. Parse home file to discover linked .htm files
+            from bs4 import BeautifulSoup
+
+            async with aiofiles.open(home_path, 'r', encoding='utf-8', errors='ignore') as f:
+                home_html = await f.read()
+
+            soup = BeautifulSoup(home_html, 'html.parser')
+
+            # Extract all links
+            discovered_files = {home_file.filename}  # Include home file
+            for link in soup.find_all('a', href=True):
+                href = link['href']
+
+                # Filter for .htm/.html files only (ignore external URLs, anchors, etc.)
+                if href.startswith(('http://', 'https://', 'mailto:', 'tel:', 'javascript:', '#')):
+                    continue
+
+                # Extract just the filename/relative path
+                href_lower = href.lower()
+                if href_lower.endswith('.htm') or href_lower.endswith('.html'):
+                    # Clean query params and anchors
+                    clean_href = href.split('?')[0].split('#')[0]
+                    discovered_files.add(clean_href)
+
+            logger.info(f"Discovered {len(discovered_files)} HTML files from home page")
+
+            # 4. Copy/expect all linked files to be in the same directory
+            # Since we're processing local docs, we assume user will upload all files
+            # For now, we'll just process the home file and note the expected files
+
+            files_to_process = [str(home_path)]
+
+            # 5. Process all HTML files using AsyncWebScraper
+            logger.info(f"Processing {len(files_to_process)} HTML file(s)...")
+            config = ScrapingConfig(concurrent_limit=4)
+
+            try:
+                async with AsyncWebScraper(config) as scraper:
+                    all_sections = []
+                    total_word_count = 0
+
+                    for file_path_str in files_to_process:
+                        file_path = Path(file_path_str)
+                        if not file_path.exists():
+                            logger.warning(f"File not found: {file_path}")
+                            continue
+
+                        logger.info(f"Extracting content from: {file_path.name}")
+                        doc_structure = await scraper.extract_from_local_file_async(file_path_str)
+
+                        if doc_structure:
+                            sections = doc_structure.get('sections', [])
+                            logger.info(f"Extracted {len(sections)} sections from {file_path.name}")
+
+                            if sections:
+                                all_sections.extend(sections)
+                                for section in sections:
+                                    total_word_count += section.get('word_count', 0)
+                        else:
+                            logger.warning(f"No content extracted from {file_path.name}")
+
+                logger.info(f"Total extracted: {len(all_sections)} sections, {total_word_count} words")
+
+            except Exception as e:
+                logger.error(f"Error during content extraction: {e}", exc_info=True)
+                return None, f"Failed to extract content: {str(e)}", None
+
+            if not all_sections:
+                error_msg = "No content extracted from HTML documentation. The file may be empty or use unsupported HTML structure."
+                logger.error(error_msg)
+                return None, error_msg, None
+
+            # 6. Create combined structured content
+            combined_content = {
+                'page_title': f"{home_file.filename} (Documentation Collection)",
+                'url': f"file://{home_path}",
+                'domain': 'local_html_docs',
+                'total_sections': len(all_sections),
+                'sections': all_sections,
+                'metadata': {
+                    'source_type': 'html_documentation',
+                    'home_file': home_file.filename,
+                    'discovered_files': list(discovered_files),
+                    'total_files_discovered': len(discovered_files),
+                    'total_word_count': total_word_count
+                }
+            }
+
+            # 7. Calculate content hash for deduplication
+            content_str = str(combined_content)
+            content_hash = hashlib.sha256(content_str.encode()).hexdigest()
+
+            # Check for duplicate
+            existing_doc = self.db.query(Document).filter(
+                Document.user_id == self.user_id,
+                Document.content_hash == content_hash,
+                Document.processing_status != "deleted"
+            ).first()
+
+            if existing_doc:
+                return None, f"Documentation already exists: {existing_doc.title}", None
+
+            # 8. Create document record
+            doc_title = metadata.get('title', f"{home_file.filename} Documentation") if metadata else f"{home_file.filename} Documentation"
+
+            document = Document(
+                user_id=self.user_id,
+                title=doc_title,
+                original_filename=home_file.filename,
+                source_type="html_documentation",
+                source_path=str(home_path),
+                content_type="text/html",
+                file_size=len(content_str),
+                content_hash=content_hash,
+                processing_status="pending",
+                processing_config={
+                    'discovered_files': list(discovered_files),
+                    'total_files': len(discovered_files),
+                    **(metadata or {})
+                }
+            )
+
+            self.db.add(document)
+            self.db.commit()
+            self.db.refresh(document)
+
+            logger.info(f"Created HTML documentation record: {document.id}")
+
+            # 9. Start processing asynchronously
+            asyncio.create_task(self._process_html_docs_async(document.id, combined_content, temp_dir))
+
+            stats = {
+                'discovered_files': list(discovered_files),
+                'total_files_discovered': len(discovered_files),
+                'total_sections': len(all_sections),
+                'total_words': total_word_count
+            }
+
+            return document, None, stats
+
+        except Exception as e:
+            logger.error(f"Error processing HTML documentation: {e}")
+            # Clean up temp directory on error
+            if temp_dir and temp_dir.exists():
+                import shutil
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            return None, f"Error processing HTML documentation: {str(e)}", None
+
+    async def _process_html_docs_async(self, document_id: int, combined_content: Dict, temp_dir: Path, chunk_size: int = 2000):
+        """
+        Background task to process HTML documentation asynchronously
+
+        Args:
+            document_id: Database ID of document to process
+            combined_content: Pre-extracted combined content from all HTML files
+            temp_dir: Temporary directory to clean up after processing
+            chunk_size: Maximum characters per chunk (default: 2000)
+        """
+        start_time = datetime.utcnow()
+
+        try:
+            # Get document from database (new session for background task)
+            from core.database import get_db
+            db = next(get_db())
+
+            document = db.query(Document).filter(Document.id == document_id).first()
+            if not document:
+                logger.error(f"Document {document_id} not found")
+                return
+
+            # Mark as processing
+            document.start_processing()
+            db.commit()
+
+            logger.info(f"Starting async processing for HTML documentation {document_id}: {document.title}")
+
+            # Create processing log
+            log = DocumentProcessingLog(
+                document_id=document_id,
+                user_id=document.user_id,
+                operation="process_html_docs",
+                status="started",
+                started_at=start_time
+            )
+            db.add(log)
+            db.commit()
+
+            # Progress: 0-20% (content already extracted)
+            document.update_progress(20.0)
+            db.commit()
+
+            # 2. Create semantic chunks (20-40%)
+            document.update_progress(25.0)
+            db.commit()
+
+            chunks_data = self._create_chunks(combined_content, max_chunk_size=chunk_size)
+
+            if not chunks_data:
+                raise ValueError("Failed to create chunks from HTML documentation")
+
+            logger.info(f"Created {len(chunks_data)} chunks for HTML documentation {document_id}")
+
+            document.update_progress(40.0)
+            db.commit()
+
+            # 3. Generate embeddings for all chunks (40-95%)
+            embeddings = []
+            if self.embedding_service:
+                chunk_texts = [chunk['text'] for chunk in chunks_data]
+                logger.info(f"Generating embeddings for {len(chunk_texts)} chunks")
+                embeddings = await self.embedding_service.generate_embeddings_batch_async(chunk_texts)
+                logger.info(f"Embedding generation complete")
+                document.update_progress(95.0)
+                db.commit()
+            else:
+                logger.warning("Embedding service not available - storing chunks without embeddings")
+                embeddings = [None] * len(chunks_data)
+                document.update_progress(95.0)
+                db.commit()
+
+            # 4. Store chunks in database (95-100%)
+            total_chars = 0
+            total_tokens = 0
+
+            for i, (chunk_data, embedding) in enumerate(zip(chunks_data, embeddings)):
+                if embedding is None and self.embedding_service:
+                    logger.warning(f"Failed to generate embedding for chunk {i}")
+
+                chunk_content = chunk_data['text']
+                chunk_hash = hashlib.sha256(chunk_content.encode()).hexdigest()
+
+                chunk = Chunk(
+                    document_id=document_id,
+                    content=chunk_content,
+                    content_hash=chunk_hash,
+                    embedding=embedding,
+                    embedding_model=self.embedding_service.model_name if self.embedding_service else None,
+                    chunk_order=i,
+                    content_type=chunk_data.get('content_type', 'text'),
+                    section_hierarchy=chunk_data.get('section_hierarchy'),
+                    character_count=len(chunk_content),
+                    word_count=chunk_data.get('word_count', len(chunk_content.split())),
+                    token_count=chunk_data.get('token_count', len(chunk_content) // 4),
+                    extraction_metadata=chunk_data.get('metadata', {})
+                )
+
+                chunk.set_content_stats()
+                total_chars += chunk.character_count
+                total_tokens += chunk.token_count
+
+                db.add(chunk)
+
+                # Update progress periodically
+                progress_points = [len(chunks_data) // 4, len(chunks_data) // 2, 3 * len(chunks_data) // 4, len(chunks_data) - 1]
+                if i in progress_points:
+                    progress = 95.0 + (5.0 * (i + 1) / len(chunks_data))
+                    document.update_progress(progress)
+                    db.commit()
+
+            # 5. Mark document as completed
+            document.complete_processing(
+                chunk_count=len(chunks_data),
+                char_count=total_chars,
+                token_count=total_tokens
+            )
+
+            # Update processing log
+            log.status = "completed"
+            log.completed_at = datetime.utcnow()
+            log.duration_seconds = (log.completed_at - log.started_at).total_seconds()
+            log.chunks_created = len(chunks_data)
+            log.tokens_processed = total_tokens
+
+            db.commit()
+
+            logger.info(f"Successfully processed HTML documentation {document_id}: {len(chunks_data)} chunks created")
+
+        except Exception as e:
+            logger.error(f"Error processing HTML documentation {document_id}: {e}")
+
+            # Mark document as failed
+            try:
+                document.fail_processing(str(e))
+
+                # Update processing log
+                log.status = "failed"
+                log.completed_at = datetime.utcnow()
+                log.duration_seconds = (log.completed_at - log.started_at).total_seconds()
+                log.error_message = str(e)
+
+                db.commit()
+            except:
+                pass
+
+        finally:
+            # Clean up temporary directory
+            if temp_dir and temp_dir.exists():
+                import shutil
+                try:
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    logger.info(f"Cleaned up temporary directory: {temp_dir}")
+                except Exception as e:
+                    logger.warning(f"Failed to clean up temp directory {temp_dir}: {e}")
+
+            db.close()
 
     async def search_documents(
         self,

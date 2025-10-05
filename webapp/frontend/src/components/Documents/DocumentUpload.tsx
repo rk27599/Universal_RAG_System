@@ -23,6 +23,8 @@ import {
   Grid,
   Tooltip,
   Snackbar,
+  TextField,
+  Slider,
 } from '@mui/material';
 import {
   CloudUpload as UploadIcon,
@@ -59,6 +61,8 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error' | 'info'>('info');
+  const [folderPath, setFolderPath] = useState('');
+  const [chunkSize, setChunkSize] = useState(2000); // Default 2000 characters
 
   const validateFile = (file: File): string | null => {
     // Check file size
@@ -83,6 +87,296 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
   const showSnackbar = (message: string, severity: 'success' | 'error' | 'info' = 'info') => {
     setSnackbarMessage(message);
     setSnackbarSeverity(severity);
+  };
+
+  const handleHtmlDocsUpload = async (file: File) => {
+    const validationError = validateFile(file);
+    if (validationError) {
+      showSnackbar(validationError, 'error');
+      return;
+    }
+
+    const uploadingFile: UploadingFile = {
+      file,
+      progress: 0,
+      status: 'uploading',
+    };
+
+    setUploadingFiles(prev => [...prev, uploadingFile]);
+
+    try {
+      updateProgress(25, 'uploading');
+
+      // Upload HTML documentation
+      const response = await apiService.uploadHtmlDocumentation(file, {
+        uploadId: Date.now().toString(),
+        timestamp: new Date().toISOString(),
+      });
+
+      if (response.success) {
+        updateProgress(50, 'processing');
+
+        // Show discovery stats
+        const stats = response.data.discoveryStats;
+        if (stats) {
+          showSnackbar(
+            `📚 Found ${stats.total_files_discovered} HTML files! Processing ${stats.total_sections} sections...`,
+            'info'
+          );
+        }
+
+        // Show embedding status
+        if (response.data.embeddingsEnabled) {
+          showSnackbar(`🎯 Processing with semantic embeddings for best search quality!`, 'info');
+        } else {
+          showSnackbar(`⚡ Processing with TF-IDF (fast mode - embeddings not available)`, 'info');
+        }
+
+        // Store embedding info
+        setUploadingFiles(prev =>
+          prev.map(f =>
+            f.file === file
+              ? {
+                  ...f,
+                  embeddingsEnabled: response.data.embeddingsEnabled,
+                  processingMethod: response.data.processingMethod
+                } as UploadingFile
+              : f
+          )
+        );
+
+        // Poll for processing completion
+        await pollProcessingStatus(file, response.data.id);
+
+      } else {
+        updateProgress(0, 'error');
+        const error = response.message || 'Upload failed';
+        setUploadingFiles(prev =>
+          prev.map(f =>
+            f.file === file ? { ...f, error } : f
+          )
+        );
+
+        if (onUploadError) {
+          onUploadError(error);
+        }
+
+        showSnackbar(`Failed to upload "${file.name}": ${error}`, 'error');
+      }
+
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.message || 'Upload failed';
+      setUploadingFiles(prev =>
+        prev.map(f =>
+          f.file === file
+            ? { ...f, progress: 0, status: 'error', error: errorMessage }
+            : f
+        )
+      );
+
+      if (onUploadError) {
+        onUploadError(errorMessage);
+      }
+
+      showSnackbar(`Error uploading "${file.name}": ${errorMessage}`, 'error');
+    }
+
+    function updateProgress(progress: number, status: UploadingFile['status']) {
+      setUploadingFiles(prev =>
+        prev.map(f =>
+          f.file === file ? { ...f, progress, status } : f
+        )
+      );
+    }
+  };
+
+  const handleFolderUpload = async () => {
+    if (!folderPath.trim()) {
+      showSnackbar('Please enter a folder path', 'error');
+      return;
+    }
+
+    // Create a pseudo-file for tracking
+    const pseudoFile = new File([], folderPath.split(/[\\\/]/).pop() || 'Folder', { type: 'text/html' });
+
+    const uploadingFile: UploadingFile = {
+      file: pseudoFile,
+      progress: 0,
+      status: 'uploading',
+    };
+
+    setUploadingFiles(prev => [...prev, uploadingFile]);
+
+    try {
+      updateProgress(10, 'uploading');
+
+      // Upload HTML folder
+      const response = await apiService.uploadHtmlFolder(
+        folderPath,
+        {
+          uploadId: Date.now().toString(),
+          timestamp: new Date().toISOString(),
+        },
+        chunkSize
+      );
+
+      if (response.success) {
+        updateProgress(30, 'processing');
+
+        // Show discovery stats
+        const stats = response.data.discoveryStats;
+        if (stats) {
+          showSnackbar(
+            `🎉 Found ${stats.total_files_discovered} HTML files! Processed ${stats.total_files_processed} files with ${stats.total_sections} sections...`,
+            'success'
+          );
+        }
+
+        // Show embedding status
+        if (response.data.embeddingsEnabled) {
+          showSnackbar(`🎯 Processing with semantic embeddings for best search quality!`, 'info');
+        } else {
+          showSnackbar(`⚡ Processing with TF-IDF (fast mode - embeddings not available)`, 'info');
+        }
+
+        // Store embedding info
+        setUploadingFiles(prev =>
+          prev.map(f =>
+            f.file === pseudoFile
+              ? {
+                  ...f,
+                  embeddingsEnabled: response.data.embeddingsEnabled,
+                  processingMethod: response.data.processingMethod
+                } as UploadingFile
+              : f
+          )
+        );
+
+        // Poll for processing completion
+        await pollProcessingStatus(pseudoFile, response.data.id);
+
+        // Clear folder path on success
+        setFolderPath('');
+
+      } else {
+        updateProgress(0, 'error');
+        const error = response.message || 'Folder processing failed';
+        setUploadingFiles(prev =>
+          prev.map(f =>
+            f.file === pseudoFile ? { ...f, error } : f
+          )
+        );
+
+        if (onUploadError) {
+          onUploadError(error);
+        }
+
+        showSnackbar(`Failed to process folder: ${error}`, 'error');
+      }
+
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.detail || error.response?.data?.message || 'Folder processing failed';
+      setUploadingFiles(prev =>
+        prev.map(f =>
+          f.file === pseudoFile
+            ? { ...f, progress: 0, status: 'error', error: errorMessage }
+            : f
+        )
+      );
+
+      if (onUploadError) {
+        onUploadError(errorMessage);
+      }
+
+      showSnackbar(`Error processing folder: ${errorMessage}`, 'error');
+    }
+
+    function updateProgress(progress: number, status: UploadingFile['status']) {
+      setUploadingFiles(prev =>
+        prev.map(f =>
+          f.file === pseudoFile ? { ...f, progress, status } : f
+        )
+      );
+    }
+  };
+
+  const pollProcessingStatus = async (file: File, documentId: string) => {
+    let processingComplete = false;
+    let attempts = 0;
+    const maxAttempts = 30; // 30 seconds timeout
+
+    const updateProgress = (progress: number, status: UploadingFile['status']) => {
+      setUploadingFiles(prev =>
+        prev.map(f =>
+          f.file === file ? { ...f, progress, status } : f
+        )
+      );
+    };
+
+    while (!processingComplete && attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      try {
+        const docResponse = await apiService.getDocument(documentId);
+        if (docResponse.success) {
+          const document = docResponse.data;
+          const serverProgress = document.progress || 0;
+          const progress = serverProgress > 0 ? serverProgress : Math.min(90, 50 + (attempts * 2));
+          updateProgress(progress, 'processing');
+
+          if (document.status === 'completed') {
+            updateProgress(100, 'completed');
+            processingComplete = true;
+
+            // Update with document ID
+            setUploadingFiles(prev =>
+              prev.map(f =>
+                f.file === file
+                  ? { ...f, documentId: document.id }
+                  : f
+              )
+            );
+
+            if (onUploadComplete) {
+              onUploadComplete(document);
+            }
+
+            showSnackbar(`Documentation "${file.name}" processed successfully!`, 'success');
+          } else if (document.status === 'failed') {
+            updateProgress(0, 'error');
+            const error = document.processingError || 'Processing failed';
+            setUploadingFiles(prev =>
+              prev.map(f =>
+                f.file === file ? { ...f, error } : f
+              )
+            );
+
+            if (onUploadError) {
+              onUploadError(error);
+            }
+
+            showSnackbar(`Failed to process "${file.name}": ${error}`, 'error');
+            break;
+          }
+        }
+      } catch (error) {
+        console.error('Error checking processing status:', error);
+      }
+
+      attempts++;
+    }
+
+    if (!processingComplete && attempts >= maxAttempts) {
+      updateProgress(0, 'error');
+      const error = 'Processing timeout';
+      setUploadingFiles(prev =>
+        prev.map(f =>
+          f.file === file ? { ...f, error } : f
+        )
+      );
+
+      showSnackbar(`Processing timeout for "${file.name}"`, 'error');
+    }
   };
 
   const uploadFile = async (file: File) => {
@@ -110,10 +404,14 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
       updateProgress(25, 'uploading');
 
       // Upload file
-      const response = await apiService.uploadDocument(file, {
-        uploadId,
-        timestamp: new Date().toISOString(),
-      });
+      const response = await apiService.uploadDocument(
+        file,
+        {
+          uploadId,
+          timestamp: new Date().toISOString(),
+        },
+        chunkSize
+      );
 
       if (response.success) {
         updateProgress(50, 'processing');
@@ -314,6 +612,44 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
 
   return (
     <Box sx={{ p: 3 }}>
+      {/* File Type Information */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>
+            Supported File Types
+          </Typography>
+
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
+            <Box>
+              <Typography variant="subtitle2" gutterBottom>
+                Documents
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                <Chip size="small" label="PDF" variant="outlined" />
+                <Chip size="small" label="Word (.doc, .docx)" variant="outlined" />
+                <Chip size="small" label="Text (.txt)" variant="outlined" />
+              </Box>
+            </Box>
+
+            <Box>
+              <Typography variant="subtitle2" gutterBottom>
+                Web & Data
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                <Chip size="small" label="HTML" variant="outlined" />
+                <Chip size="small" label="Markdown (.md)" variant="outlined" />
+                <Chip size="small" label="JSON (.json, .jsonl)" variant="outlined" />
+              </Box>
+            </Box>
+          </Box>
+
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+            Files are automatically processed and indexed for search and RAG functionality.
+            Large documents are intelligently chunked to optimize retrieval performance.
+          </Typography>
+        </CardContent>
+      </Card>
+
       {/* Upload Area */}
       <Paper
         {...getRootProps()}
@@ -366,11 +702,193 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
         </Box>
       </Paper>
 
+      {/* Chunk Size Control for Regular Upload */}
+      <Box sx={{ mt: 2, px: 2, py: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+        <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold' }}>
+          📏 Chunk Size Settings
+        </Typography>
+        <Typography variant="caption" sx={{ display: 'block', mb: 1, color: 'text.secondary' }}>
+          Current: {chunkSize} characters
+        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+          <Chip
+            label="Small"
+            size="small"
+            onClick={() => setChunkSize(1000)}
+            color={chunkSize === 1000 ? 'primary' : 'default'}
+            variant={chunkSize === 1000 ? 'filled' : 'outlined'}
+          />
+          <Chip
+            label="Medium"
+            size="small"
+            onClick={() => setChunkSize(2000)}
+            color={chunkSize === 2000 ? 'primary' : 'default'}
+            variant={chunkSize === 2000 ? 'filled' : 'outlined'}
+          />
+          <Chip
+            label="Large"
+            size="small"
+            onClick={() => setChunkSize(4000)}
+            color={chunkSize === 4000 ? 'primary' : 'default'}
+            variant={chunkSize === 4000 ? 'filled' : 'outlined'}
+          />
+          <Chip
+            label="XL"
+            size="small"
+            onClick={() => setChunkSize(8000)}
+            color={chunkSize === 8000 ? 'primary' : 'default'}
+            variant={chunkSize === 8000 ? 'filled' : 'outlined'}
+          />
+        </Box>
+        <Slider
+          value={chunkSize}
+          onChange={(_, value) => setChunkSize(value as number)}
+          min={500}
+          max={10000}
+          step={100}
+          size="small"
+          sx={{ mt: 0.5 }}
+          valueLabelDisplay="auto"
+        />
+        <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', fontStyle: 'italic' }}>
+          ℹ️ Larger chunks = better context preservation, fewer fragments
+        </Typography>
+      </Box>
+
       {/* Security Notice */}
       <Alert severity="info" sx={{ mt: 2 }}>
         🔒 <strong>Local Processing:</strong> All files are processed locally on your system.
         No data is sent to external services.
       </Alert>
+
+      {/* HTML Documentation Upload Section */}
+      <Card sx={{ mt: 3, border: '2px solid', borderColor: 'primary.light' }}>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>
+            📚 HTML Documentation
+          </Typography>
+
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            Process local HTML documentation files for semantic search
+          </Typography>
+
+          {/* Folder Path Input - Primary Option */}
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="subtitle2" gutterBottom>
+              📁 Folder Path (Recommended)
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <TextField
+                fullWidth
+                size="small"
+                placeholder="C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\arm64\AccChecker"
+                value={folderPath}
+                onChange={(e) => setFolderPath(e.target.value)}
+                helperText="Processes all .htm files in folder and subfolders"
+              />
+              <Button
+                variant="contained"
+                onClick={handleFolderUpload}
+                disabled={!folderPath.trim()}
+                startIcon={<UploadIcon />}
+                sx={{ minWidth: 120 }}
+              >
+                Process
+              </Button>
+            </Box>
+
+            {/* Chunk Size Control */}
+            <Box sx={{ mt: 2, px: 1 }}>
+              <Typography variant="caption" sx={{ display: 'block', mb: 0.5, color: 'text.secondary' }}>
+                📏 Chunk Size: {chunkSize} characters
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Chip
+                  label="Small"
+                  size="small"
+                  onClick={() => setChunkSize(1000)}
+                  color={chunkSize === 1000 ? 'primary' : 'default'}
+                  variant={chunkSize === 1000 ? 'filled' : 'outlined'}
+                />
+                <Chip
+                  label="Medium"
+                  size="small"
+                  onClick={() => setChunkSize(2000)}
+                  color={chunkSize === 2000 ? 'primary' : 'default'}
+                  variant={chunkSize === 2000 ? 'filled' : 'outlined'}
+                />
+                <Chip
+                  label="Large"
+                  size="small"
+                  onClick={() => setChunkSize(4000)}
+                  color={chunkSize === 4000 ? 'primary' : 'default'}
+                  variant={chunkSize === 4000 ? 'filled' : 'outlined'}
+                />
+                <Chip
+                  label="XL"
+                  size="small"
+                  onClick={() => setChunkSize(8000)}
+                  color={chunkSize === 8000 ? 'primary' : 'default'}
+                  variant={chunkSize === 8000 ? 'filled' : 'outlined'}
+                />
+              </Box>
+              <Slider
+                value={chunkSize}
+                onChange={(_, value) => setChunkSize(value as number)}
+                min={500}
+                max={10000}
+                step={100}
+                size="small"
+                sx={{ mt: 1 }}
+                valueLabelDisplay="auto"
+              />
+              <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', fontStyle: 'italic' }}>
+                ℹ️ Larger chunks = better context, fewer fragments
+              </Typography>
+            </Box>
+          </Box>
+
+          {/* OR Divider */}
+          <Box sx={{ display: 'flex', alignItems: 'center', my: 2 }}>
+            <Box sx={{ flexGrow: 1, height: 1, bgcolor: 'divider' }} />
+            <Typography variant="caption" sx={{ px: 2, color: 'text.secondary' }}>
+              OR
+            </Typography>
+            <Box sx={{ flexGrow: 1, height: 1, bgcolor: 'divider' }} />
+          </Box>
+
+          {/* Single File Upload - Alternative Option */}
+          <Box>
+            <Typography variant="subtitle2" gutterBottom>
+              📄 Single File
+            </Typography>
+            <input
+              accept=".htm,.html"
+              style={{ display: 'none' }}
+              id="html-docs-upload"
+              type="file"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  handleHtmlDocsUpload(file);
+                }
+              }}
+            />
+            <label htmlFor="html-docs-upload">
+              <Button
+                variant="outlined"
+                component="span"
+                startIcon={<UploadIcon />}
+              >
+                Upload .htm File
+              </Button>
+            </label>
+            <Typography variant="caption" color="text.secondary" sx={{ ml: 2 }}>
+              Upload home page to discover linked files
+            </Typography>
+          </Box>
+        </CardContent>
+      </Card>
 
       {/* Uploading Files */}
       {uploadingFiles.length > 0 && (
@@ -389,6 +907,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
 
                   <ListItemText
                     primary={uploadingFile.file.name}
+                    secondaryTypographyProps={{ component: 'div' }}
                     secondary={
                       <Box>
                         <Typography variant="caption" component="div">
@@ -451,44 +970,6 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
           </CardContent>
         </Card>
       )}
-
-      {/* File Type Information */}
-      <Card sx={{ mt: 3 }}>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>
-            Supported File Types
-          </Typography>
-
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
-            <Box>
-              <Typography variant="subtitle2" gutterBottom>
-                Documents
-              </Typography>
-              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                <Chip size="small" label="PDF" variant="outlined" />
-                <Chip size="small" label="Word (.doc, .docx)" variant="outlined" />
-                <Chip size="small" label="Text (.txt)" variant="outlined" />
-              </Box>
-            </Box>
-
-            <Box>
-              <Typography variant="subtitle2" gutterBottom>
-                Web & Data
-              </Typography>
-              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                <Chip size="small" label="HTML" variant="outlined" />
-                <Chip size="small" label="Markdown (.md)" variant="outlined" />
-                <Chip size="small" label="JSON (.json, .jsonl)" variant="outlined" />
-              </Box>
-            </Box>
-          </Box>
-
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-            Files are automatically processed and indexed for search and RAG functionality.
-            Large documents are intelligently chunked to optimize retrieval performance.
-          </Typography>
-        </CardContent>
-      </Card>
 
       {/* Snackbar for notifications */}
       <Snackbar

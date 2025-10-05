@@ -87,14 +87,14 @@ const DocumentsPage: React.FC = () => {
   };
 
   return (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <Box>
       {/* Upload Section */}
       <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
         <DocumentUpload onUploadComplete={handleUploadComplete} />
       </Box>
 
       {/* Document List */}
-      <Box sx={{ flexGrow: 1, overflow: 'auto' }}>
+      <Box>
         <DocumentList refreshTrigger={refreshTrigger} />
       </Box>
     </Box>
