@@ -1,37 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python3:*)",
-      "Bash(jupyter notebook --version)",
-      "Bash(jupyter lab --version)",
-      "SlashCommand(/init)",
-      "Bash(python:*)",
-      "Bash(timeout:*)",
-      "Bash(mkdir:*)",
-      "Bash(git commit:*)",
-      "Bash(chmod:*)",
-      "Bash(npm run build:*)",
-      "Bash(npm install:*)",
-      "Bash(npx tsc:*)",
-      "mcp__ide__getDiagnostics",
-      "Bash(npm start)",
-      "Bash(curl:*)",
-      "Bash(pip install:*)",
-      "Bash(pkill:*)",
-      "Read(//tmp/**)",
-      "Bash(source:*)",
-      "Bash(python3.12:*)",
-      "Bash(lsof:*)",
-      "Bash(find:*)",
-      "Bash(cat:*)",
-      "Bash(tree:*)",
-      "Bash(awk:*)",
-      "Bash(grep:*)",
-      "Bash(sqlite3:*)",
-      "Bash(git log:*)",
-      "Bash(git add:*)"
-    ],
-    "deny": [],
-    "ask": []
+      "Bash(python3:*)"
+    ]
   }
 }

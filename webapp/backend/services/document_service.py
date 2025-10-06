@@ -571,7 +571,7 @@ class DocumentProcessingService:
 
             for section in sections:
                 content_text = section.get('content_text', '')
-                if len(content_text.strip()) < 50:
+                if len(content_text.strip()) < 20:  # Reduced from 50 for technical documentation
                     continue
 
                 section_title = section.get('title', '')[:100]

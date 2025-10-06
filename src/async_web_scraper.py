@@ -222,16 +222,23 @@ class AsyncWebScraper:
         return links[:50]  # Limit links per page for performance
 
     def _clean_content_fast(self, soup: BeautifulSoup) -> BeautifulSoup:
-        """Optimized content cleaning with fewer DOM operations"""
+        """Optimized content cleaning with MadCap Flare support"""
         # Remove in batches for better performance
         selectors_batch = [
-            'script', 'style', 'nav', 'header', 'footer', 'aside',
-            '.navbar', '.menu', '.sidebar', '.ad', '.ads', '.social'
+            'script', 'style', 'footer', 'aside',
+            '.navbar', '.menu', '.sidebar', '.ad', '.ads', '.social',
+            '.nocontent',  # MadCap breadcrumbs wrapper (NOT main content)
+            '.MCBreadcrumbsBox_0',  # Specific MadCap breadcrumbs
+            '#DEBUG_Log',  # MadCap debug console
         ]
+
+        # Note: NOT removing 'nav' or 'header' as they might contain content in some systems
 
         for selector in selectors_batch:
             for element in soup.select(selector):
-                element.decompose()
+                # Safety check: Don't remove if it contains mc-main-content
+                if not element.find(id='mc-main-content') and not element.find(attrs={'role': 'main'}):
+                    element.decompose()
 
         return soup
 
@@ -277,14 +284,16 @@ class AsyncWebScraper:
                 else:
                     title = urlparse(url).netloc
 
-            # Enhanced main content detection
+            # Enhanced main content detection with MadCap Flare support
             main_content = (
-                soup.find('main') or
-                soup.find('article') or
-                soup.find('div', class_=re.compile(r'content|main|body', re.I)) or
-                soup.find('div', id=re.compile(r'content|main|body', re.I)) or
-                soup.find('section') or
-                soup
+                soup.find('div', {'role': 'main'}) or  # MadCap Flare and ARIA semantic HTML
+                soup.find('div', {'id': 'mc-main-content'}) or  # Explicit MadCap main content ID
+                soup.find('main') or  # HTML5 semantic main
+                soup.find('article') or  # HTML5 article
+                soup.find('div', class_=re.compile(r'content|main|body', re.I)) or  # Class-based detection
+                soup.find('div', id=re.compile(r'content|main|body', re.I)) or  # ID-based detection
+                soup.find('section') or  # HTML5 section
+                soup  # Fallback to entire document
             )
 
             sections = []
@@ -317,7 +326,7 @@ class AsyncWebScraper:
 
                 elif element.name in ['p', 'pre', 'ul', 'ol', 'dl', 'blockquote', 'code']:
                     text = element.get_text().strip()
-                    if len(text) > 20:
+                    if len(text) > 10:  # Reduced from 20 to capture more content
                         # Label content per type
                         if element.name == 'pre' or element.name == 'code':
                             text = f"Code example:\n{text}"
@@ -340,6 +349,20 @@ class AsyncWebScraper:
                 current_section["content_text"] = "\n\n".join(current_section["content"])
                 current_section["word_count"] = len(current_section["content_text"].split())
                 sections.append(current_section)
+
+            # Diagnostic logging for extraction failures
+            if not sections or len(sections) == 0:
+                logger.warning(f"⚠️ No sections extracted from {url}")
+                logger.warning(f"   Main content: <{main_content.name if main_content else 'None'}> "
+                               f"id='{main_content.get('id', '') if main_content and hasattr(main_content, 'get') else ''}' "
+                               f"class='{main_content.get('class', []) if main_content and hasattr(main_content, 'get') else []}'")
+                logger.warning(f"   Elements found: {len(elements)}")
+                if len(elements) > 0:
+                    logger.warning(f"   First 5 elements: {[(e.name, e.get('class', []), len(e.get_text().strip())) for e in elements[:5]]}")
+                preview_text = soup.get_text().strip()[:500]
+                logger.warning(f"   Text preview (500 chars): {preview_text}")
+            else:
+                logger.info(f"✅ Extracted {len(sections)} sections from {url}")
 
             return {
                 "url": url,
