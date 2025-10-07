@@ -134,11 +134,11 @@ If you're currently using SQLite and want to migrate to PostgreSQL for 50x perfo
 cd webapp/backend
 
 # Step 1: Automated PostgreSQL setup (installs + configures everything)
-chmod +x setup_postgres.sh
-./setup_postgres.sh
+chmod +x ../scripts/setup_postgres.sh
+../scripts/setup_postgres.sh
 
 # Step 2: Migrate your existing data from SQLite
-python migrate_sqlite_to_postgres.py --sqlite-path ./test.db
+python ../scripts/migrate_sqlite_to_postgres.py --sqlite-path ../test.db
 
 # Step 3: Update your environment to use PostgreSQL
 cp .env .env.sqlite-backup

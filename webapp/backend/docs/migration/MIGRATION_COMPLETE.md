@@ -29,7 +29,7 @@ Your RAG system has been successfully migrated to use **PostgreSQL with pgvector
 - ✅ Indexes optimized for performance
 
 ### 4. Documentation Created
-- ✅ [setup_postgres.sh](setup_postgres.sh) - Automated PostgreSQL installation
+- ✅ [setup_postgres.sh](../../scripts/setup_postgres.sh) - Automated PostgreSQL installation
 - ✅ [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md) - Complete migration guide
 - ✅ [MIGRATE_NOW.md](MIGRATE_NOW.md) - Quick start guide
 - ✅ [VECTOR_SEARCH_OPTIMIZATION.md](VECTOR_SEARCH_OPTIMIZATION.md) - Performance details
@@ -129,10 +129,10 @@ psql -h localhost -U rag_user -d rag_database -c "SELECT COUNT(*) FROM chunks;"
 ## 📁 Files Created
 
 ### Scripts
-- [setup_postgres.sh](setup_postgres.sh) - PostgreSQL installation
-- [migrate_sqlite_to_postgres.py](migrate_sqlite_to_postgres.py) - ORM-based migration
-- [migrate_data_direct.py](migrate_data_direct.py) - Direct SQL migration
-- [migrate_complete.py](migrate_complete.py) - Schema-aware migration
+- [setup_postgres.sh](../../scripts/setup_postgres.sh) - PostgreSQL installation
+- [migrate_sqlite_to_postgres.py](../../scripts/migrate_sqlite_to_postgres.py) - ORM-based migration
+- [migrate_data_direct.py](../../scripts/migrate_data_direct.py) - Direct SQL migration
+- [migrate_complete.py](../../scripts/migrate_complete.py) - Schema-aware migration
 - [QUICK_MIGRATION.sh](QUICK_MIGRATION.sh) - Quick migration runner
 
 ### Documentation

@@ -32,7 +32,7 @@ Since this requires sudo access, run these commands in your terminal:
 cd /home/rkpatel/RAG/webapp/backend
 
 # Install PostgreSQL (requires sudo password)
-sudo ./setup_postgres.sh
+sudo ../../scripts/setup_postgres.sh
 ```
 
 **What this does**:
@@ -71,7 +71,7 @@ cd /home/rkpatel/RAG/webapp/backend
 cd /home/rkpatel/RAG/webapp/backend
 
 # Step 1: Install PostgreSQL (needs sudo)
-sudo ./setup_postgres.sh
+sudo ../../scripts/setup_postgres.sh
 
 # Step 2: Migrate data (no sudo needed)
 ./QUICK_MIGRATION.sh
@@ -289,7 +289,7 @@ Your current setup:
 
 Run these two commands:
 ```bash
-sudo ./setup_postgres.sh       # Install PostgreSQL (needs sudo)
+sudo ../../scripts/setup_postgres.sh       # Install PostgreSQL (needs sudo)
 ./QUICK_MIGRATION.sh           # Migrate your data (no sudo)
 ```
 

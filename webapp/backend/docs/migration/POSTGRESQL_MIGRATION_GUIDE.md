@@ -108,10 +108,10 @@ db.close()
 cd webapp/backend
 
 # Make script executable
-chmod +x setup_postgres.sh
+chmod +x ../../scripts/setup_postgres.sh
 
 # Run installation and setup
-./setup_postgres.sh
+../../scripts/setup_postgres.sh
 ```
 
 **What this does**:
@@ -143,10 +143,10 @@ chmod +x setup_postgres.sh
 
 ```bash
 # Run migration with dry-run first (to preview)
-python migrate_sqlite_to_postgres.py --sqlite-path ./test.db --dry-run
+python ../../scripts/migrate_sqlite_to_postgres.py --sqlite-path ../../test.db --dry-run
 
 # Run actual migration
-python migrate_sqlite_to_postgres.py --sqlite-path ./test.db
+python ../../scripts/migrate_sqlite_to_postgres.py --sqlite-path ../../test.db
 ```
 
 **Migration process**:
@@ -166,7 +166,7 @@ SQLite → PostgreSQL Migration
 ==============================================================================
 
 🔍 Verifying database connections...
-✓ SQLite connection successful: ./test.db
+✓ SQLite connection successful: ../../test.db
 ✓ PostgreSQL connection successful
   Version: PostgreSQL 15.5
   pgvector: 0.5.1
@@ -370,7 +370,7 @@ db.close()
 
 # Import to PostgreSQL
 # (Switch DATABASE_URL in .env)
-python migrate_sqlite_to_postgres.py
+python ../../scripts/migrate_sqlite_to_postgres.py
 ```
 
 ---
@@ -447,7 +447,7 @@ cd webapp/backend
 cp .env.sqlite .env
 
 # OR
-echo "DATABASE_URL=sqlite:///./test.db" > .env
+echo "DATABASE_URL=sqlite:///../../test.db" > .env
 
 # Restore SQLite database if needed
 cp test.db.backup test.db
@@ -461,7 +461,7 @@ python main.py
 
 ```bash
 # Switch to SQLite for testing
-export DATABASE_URL="sqlite:///./test.db"
+export DATABASE_URL="sqlite:///../../test.db"
 python main.py
 
 # Switch to PostgreSQL for production

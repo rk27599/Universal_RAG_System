@@ -32,7 +32,7 @@ if ! command -v psql &> /dev/null; then
     echo "    sudo apt-get install postgresql postgresql-contrib"
     echo ""
     echo "  Then run the setup script:"
-    echo "    sudo ./setup_postgres.sh"
+    echo "    sudo ./scripts/setup_postgres.sh"
     echo ""
     exit 1
 fi
@@ -40,14 +40,22 @@ fi
 echo -e "${GREEN}✓ PostgreSQL is installed${NC}"
 echo ""
 
-# Check if test.db exists
-if [ ! -f "test.db" ]; then
+# Check if test.db exists (in backups directory)
+if [ ! -f "../test.db" ] && [ ! -f "backups/test.db" ]; then
     echo -e "${RED}❌ SQLite database (test.db) not found!${NC}"
+    echo "Looking in: $(pwd)/../test.db or $(pwd)/backups/test.db"
     exit 1
 fi
 
+# Use the database from backups if it exists, otherwise parent directory
+if [ -f "backups/test.db" ]; then
+    DB_PATH="backups/test.db"
+else
+    DB_PATH="../test.db"
+fi
+
 # Get database size
-DB_SIZE=$(du -h test.db | cut -f1)
+DB_SIZE=$(du -h "$DB_PATH" | cut -f1)
 echo -e "${BLUE}Current SQLite database:${NC}"
 echo "  Path: $(pwd)/test.db"
 echo "  Size: $DB_SIZE"
@@ -55,9 +63,10 @@ echo ""
 
 # Step 1: Backup
 echo -e "${YELLOW}[1/5] Creating backup...${NC}"
-cp test.db test.db.backup
-cp .env .env.backup 2>/dev/null || true
-echo -e "${GREEN}✓ Backup created: test.db.backup${NC}"
+mkdir -p backups
+cp "$DB_PATH" backups/test.db.backup
+cp ../.env backups/.env.backup 2>/dev/null || true
+echo -e "${GREEN}✓ Backup created: backups/test.db.backup${NC}"
 echo ""
 
 # Step 2: Check PostgreSQL connection
@@ -68,7 +77,7 @@ else
     echo -e "${RED}❌ Cannot connect to PostgreSQL${NC}"
     echo ""
     echo "Please ensure PostgreSQL is set up:"
-    echo "  sudo ./setup_postgres.sh"
+    echo "  sudo ./scripts/setup_postgres.sh"
     echo ""
     exit 1
 fi
@@ -76,7 +85,7 @@ echo ""
 
 # Step 3: Run migration (dry-run first)
 echo -e "${YELLOW}[3/5] Testing migration (dry-run)...${NC}"
-python3 migrate_sqlite_to_postgres.py --sqlite-path ./test.db --dry-run
+python3 scripts/migrate_sqlite_to_postgres.py --sqlite-path "$DB_PATH" --dry-run
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}❌ Dry-run failed!${NC}"
@@ -100,7 +109,7 @@ fi
 
 echo ""
 echo -e "${YELLOW}[4/5] Migrating data...${NC}"
-python3 migrate_sqlite_to_postgres.py --sqlite-path ./test.db
+python3 scripts/migrate_sqlite_to_postgres.py --sqlite-path "$DB_PATH"
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}❌ Migration failed!${NC}"
@@ -115,8 +124,8 @@ echo ""
 # Step 4: Update environment
 echo -e "${YELLOW}[5/5] Updating environment...${NC}"
 
-# Create .env with PostgreSQL
-cat > .env << 'EOF'
+# Create ../.env with PostgreSQL
+cat > ../.env << 'EOF'
 # Database (PostgreSQL - PRIMARY)
 DATABASE_URL=postgresql://rag_user:secure_rag_password_2024@localhost:5432/rag_database
 
@@ -160,11 +169,11 @@ echo "     Frontend: http://localhost:3000"
 echo "     Backend:  http://localhost:8000"
 echo ""
 echo "Backup files created:"
-echo "  • test.db.backup (SQLite database)"
-echo "  • .env.backup (old environment config)"
+echo "  • backups/test.db.backup (SQLite database)"
+echo "  • backups/.env.backup (old environment config)"
 echo ""
 echo -e "${BLUE}To switch back to SQLite:${NC}"
-echo "  cp .env.backup .env"
+echo "  cp backups/.env.backup ../.env"
 echo "  # Then restart the application"
 echo ""
 echo "=========================================================================="

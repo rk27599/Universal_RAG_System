@@ -187,7 +187,7 @@ def migrate_chunks(sqlite_conn, pg_conn):
 
 def main():
     parser = argparse.ArgumentParser(description="Migrate SQLite to PostgreSQL")
-    parser.add_argument("--sqlite-path", default="./test.db", help="Path to SQLite database")
+    parser.add_argument("--sqlite-path", default="../test.db", help="Path to SQLite database (default: ../test.db)")
     parser.add_argument("--dry-run", action="store_true", help="Show what would be migrated")
     parser.add_argument("--yes", "-y", action="store_true", help="Skip confirmation prompt")
     args = parser.parse_args()

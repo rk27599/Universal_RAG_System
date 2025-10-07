@@ -13,7 +13,7 @@ Usage:
     python migrate_sqlite_to_postgres.py [--sqlite-path PATH] [--verify]
 
 Options:
-    --sqlite-path PATH    Path to SQLite database (default: ./test.db)
+    --sqlite-path PATH    Path to SQLite database (default: ../test.db)
     --verify             Only verify migration, don't perform it
     --dry-run            Show what would be migrated without doing it
 ==============================================================================
@@ -26,8 +26,8 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 import time
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent))
+# Add parent directory to path for imports (script is in scripts/ subdirectory)
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sqlalchemy import create_engine, text, inspect
 from sqlalchemy.orm import sessionmaker
@@ -42,7 +42,7 @@ import numpy as np
 class DatabaseMigration:
     """Handles migration from SQLite to PostgreSQL"""
 
-    def __init__(self, sqlite_path: str = "./test.db"):
+    def __init__(self, sqlite_path: str = "../test.db"):
         self.sqlite_path = sqlite_path
         self.stats = {
             "users": 0,
@@ -441,8 +441,8 @@ def main():
     )
     parser.add_argument(
         "--sqlite-path",
-        default="./test.db",
-        help="Path to SQLite database (default: ./test.db)"
+        default="../test.db",
+        help="Path to SQLite database (default: ../test.db or backups/test.db)"
     )
     parser.add_argument(
         "--verify",
