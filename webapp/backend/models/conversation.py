@@ -309,7 +309,10 @@ class MessageSearchIndex(BaseModel):
         Index('idx_search_message', 'message_id'),
         Index('idx_search_conversation', 'conversation_id'),
         Index('idx_search_user', 'user_id'),
-        Index('idx_search_content', 'searchable_content', postgresql_using='gin'),
+        # GIN index with proper operator class for text search
+        Index('idx_search_content', 'searchable_content',
+              postgresql_using='gin',
+              postgresql_ops={'searchable_content': 'gin_trgm_ops'}),
     )
 
     def __repr__(self):

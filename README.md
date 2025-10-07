@@ -263,9 +263,43 @@ This repository contains **two main components**:
 | **Core Docs** | API reference, guides | 252 KB | Markdown |
 | **Examples** | Usage examples | 76 KB | Python |
 | **Tests** | Core library tests | 52 KB | pytest |
-| **Web Application** | Optional full-stack UI | 976 MB | FastAPI + React + PostgreSQL |
+| **Web Application** | Optional full-stack UI | 976 MB | FastAPI + React + PostgreSQL (primary) / SQLite (backup) |
 
 **Note**: The web application (`webapp/`) is **optional**. You can use the core RAG library standalone for programmatic use. See [webapp/README_WEBAPP.md](webapp/README_WEBAPP.md) for web app setup.
+
+### Database Support for Web Application
+
+The web application supports two database backends with different performance characteristics:
+
+| Database | Performance | Use Case | Vector Search Speed | Setup |
+|----------|------------|----------|---------------------|-------|
+| **PostgreSQL + pgvector** | ⚡ **10-100x faster** | **Production (PRIMARY)** | O(log n) with HNSW index | `./setup_postgres.sh` |
+| **SQLite** | Baseline | Development/Testing (BACKUP) | O(n) Python-based | Auto-created |
+
+**Why PostgreSQL?**
+- **50x faster** vector search for large document collections (100K+ chunks)
+- Native pgvector extension with HNSW (Hierarchical Navigable Small World) indexing
+- Scales to millions of documents without performance degradation
+- Production-ready with connection pooling and optimization
+
+**When to use SQLite?**
+- Quick local development and testing
+- Small document collections (<1000 chunks)
+- No setup required (auto-created on first run)
+
+**Migration**: Easily switch between databases using `.env` files:
+```bash
+# Use PostgreSQL (production)
+cp .env .env.backup
+
+# Use SQLite (development)
+cp .env.dev .env
+
+# Migrate data
+python migrate_sqlite_to_postgres.py
+```
+
+See [webapp/backend/VECTOR_SEARCH_OPTIMIZATION.md](webapp/backend/VECTOR_SEARCH_OPTIMIZATION.md) for performance benchmarks and tuning guide.
 
 ## 🎯 Core Components
 

@@ -10,7 +10,7 @@ import sys
 import os
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from fastapi import UploadFile
 import aiofiles
@@ -125,7 +125,11 @@ class DocumentProcessingService:
             logger.info(f"Created document record: {document.id}")
 
             # 5. Start processing asynchronously
-            asyncio.create_task(self._process_document_async(document.id, file_path, chunk_size))
+            # Store the task to prevent garbage collection
+            task = asyncio.create_task(self._process_document_async(document.id, file_path, chunk_size))
+            # Keep a reference to prevent GC (store in a module-level set if needed in production)
+            # For now, we'll add a done callback to handle completion
+            task.add_done_callback(lambda t: logger.info(f"Document {document.id} processing task completed") if not t.exception() else logger.error(f"Document {document.id} processing task failed: {t.exception()}"))
 
             return document, None
 
@@ -145,22 +149,26 @@ class DocumentProcessingService:
             chunk_size: Maximum characters per chunk (default: 2000)
         """
         start_time = datetime.utcnow()
+        db = None
 
         try:
+            logger.info(f"🚀 Background task started for document {document_id}")
+
             # Get document from database (new session for background task)
             from core.database import get_db
             db = next(get_db())
 
             document = db.query(Document).filter(Document.id == document_id).first()
             if not document:
-                logger.error(f"Document {document_id} not found")
+                logger.error(f"❌ Document {document_id} not found in database")
                 return
 
             # Mark as processing
+            logger.info(f"📝 Marking document {document_id} as processing")
             document.start_processing()
             db.commit()
 
-            logger.info(f"Starting async processing for document {document_id}: {document.title}")
+            logger.info(f"✅ Starting async processing for document {document_id}: {document.title}")
 
             # Create processing log
             log = DocumentProcessingLog(
@@ -264,8 +272,17 @@ class DocumentProcessingService:
 
             # Update processing log
             log.status = "completed"
-            log.completed_at = datetime.utcnow()
-            log.duration_seconds = (log.completed_at - log.started_at).total_seconds()
+            completed_time = datetime.utcnow()
+            log.completed_at = completed_time
+
+            # Handle timezone-aware vs naive datetime comparison
+            start_time = log.started_at
+            if start_time.tzinfo is not None and completed_time.tzinfo is None:
+                completed_time = completed_time.replace(tzinfo=timezone.utc)
+            elif start_time.tzinfo is None and completed_time.tzinfo is not None:
+                start_time = start_time.replace(tzinfo=timezone.utc)
+
+            log.duration_seconds = (completed_time - start_time).total_seconds()
             log.chunks_created = len(chunks_data)
             log.tokens_processed = total_tokens
 
@@ -274,24 +291,32 @@ class DocumentProcessingService:
             logger.info(f"Successfully processed document {document_id}: {len(chunks_data)} chunks created")
 
         except Exception as e:
-            logger.error(f"Error processing document {document_id}: {e}")
+            import traceback
+            error_details = traceback.format_exc()
+            logger.error(f"❌ Error processing document {document_id}: {e}")
+            logger.error(f"Traceback:\n{error_details}")
 
             # Mark document as failed
-            try:
-                document.fail_processing(str(e))
+            if db and document:
+                try:
+                    document.fail_processing(str(e))
 
-                # Update processing log
-                log.status = "failed"
-                log.completed_at = datetime.utcnow()
-                log.duration_seconds = (log.completed_at - log.started_at).total_seconds()
-                log.error_message = str(e)
+                    # Update processing log if it exists
+                    if 'log' in locals():
+                        log.status = "failed"
+                        log.completed_at = datetime.utcnow()
+                        log.duration_seconds = (log.completed_at - log.started_at).total_seconds()
+                        log.error_message = str(e)[:1000]  # Limit error message length
 
-                db.commit()
-            except:
-                pass
+                    db.commit()
+                    logger.info(f"✅ Marked document {document_id} as failed in database")
+                except Exception as db_error:
+                    logger.error(f"❌ Failed to mark document {document_id} as failed: {db_error}")
 
         finally:
-            db.close()
+            if db:
+                db.close()
+                logger.info(f"🔒 Database session closed for document {document_id}")
 
     def _update_embedding_progress(self, db, document, start_pct: float, end_pct: float, progress: float):
         """
@@ -1333,8 +1358,17 @@ class DocumentProcessingService:
 
             # Update processing log
             log.status = "completed"
-            log.completed_at = datetime.utcnow()
-            log.duration_seconds = (log.completed_at - log.started_at).total_seconds()
+            completed_time = datetime.utcnow()
+            log.completed_at = completed_time
+
+            # Handle timezone-aware vs naive datetime comparison
+            start_time = log.started_at
+            if start_time.tzinfo is not None and completed_time.tzinfo is None:
+                completed_time = completed_time.replace(tzinfo=timezone.utc)
+            elif start_time.tzinfo is None and completed_time.tzinfo is not None:
+                start_time = start_time.replace(tzinfo=timezone.utc)
+
+            log.duration_seconds = (completed_time - start_time).total_seconds()
             log.chunks_created = len(chunks_data)
             log.tokens_processed = total_tokens
 
@@ -1379,16 +1413,19 @@ class DocumentProcessingService:
         min_similarity: float = 0.3
     ) -> List[Dict]:
         """
-        Search documents using semantic similarity
+        Search documents using semantic similarity with PostgreSQL vector operations
+
+        This method uses pgvector's HNSW index for efficient similarity search,
+        providing O(log n) performance instead of O(n) Python-based computation.
 
         Args:
             query: Natural language search query
             top_k: Number of results to return
             document_ids: Optional filter by document IDs
-            min_similarity: Minimum similarity threshold
+            min_similarity: Minimum similarity threshold (0-1)
 
         Returns:
-            List of matching chunks with similarity scores
+            List of matching chunks with similarity scores, sorted by relevance
         """
         try:
             # Check if embeddings are available - if not, fall back to TF-IDF search
@@ -1407,99 +1444,125 @@ class DocumentProcessingService:
                 logger.error("Failed to generate query embedding")
                 return []
 
-            # Build base query for chunks
-            query_builder = self.db.query(Chunk, Document).join(
-                Document, Chunk.document_id == Document.id
-            ).filter(
-                Document.user_id == self.user_id,
-                Document.processing_status == "completed",
-                Chunk.embedding.isnot(None)
-            )
+            # Check database type - pgvector operators only work with PostgreSQL
+            from sqlalchemy import inspect
+            import numpy as np
 
-            # Filter by specific documents if requested
-            if document_ids:
-                query_builder = query_builder.filter(Document.id.in_(document_ids))
+            dialect_name = inspect(self.db.bind).dialect.name
 
-            # Get all chunks (will compute similarity in Python for now)
-            # In production, use pgvector for database-level similarity search
-            all_chunks = query_builder.all()
+            if dialect_name == 'postgresql':
+                # Use optimized pgvector operations
+                logger.info(f"🔍 Vector search (pgvector): dimensions={len(query_embedding)}, top_k={top_k}, min_similarity={min_similarity}")
 
-            logger.info(f"📦 Found {len(all_chunks)} chunks to search (user_id={self.user_id}, doc_ids={document_ids})")
+                distance = Chunk.embedding.cosine_distance(query_embedding)
+                similarity = 1 - (distance / 2)
 
-            if not all_chunks:
-                logger.warning(f"⚠️ No chunks found for search - user_id={self.user_id}, document_ids={document_ids}")
-                return []
+                query_builder = self.db.query(
+                    Chunk,
+                    Document,
+                    similarity.label('similarity')
+                ).join(
+                    Document, Chunk.document_id == Document.id
+                ).filter(
+                    Document.user_id == self.user_id,
+                    Document.processing_status == "completed",
+                    Chunk.embedding.isnot(None)
+                )
 
-            # Compute similarity scores
-            results = []
-            processed_count = 0
-            error_count = 0
+                if document_ids:
+                    query_builder = query_builder.filter(Document.id.in_(document_ids))
 
-            logger.info(f"🔍 Computing similarities for {len(all_chunks)} chunks...")
-            for chunk, document in all_chunks:
-                processed_count += 1
-                try:
-                    # Check if embedding exists (handle both None and empty arrays)
-                    if chunk.embedding is None:
-                        if processed_count <= 3:  # Log first few
-                            logger.debug(f"Chunk {chunk.id}: embedding is None, skipping")
-                        continue
+                max_distance = 2 * (1 - min_similarity)
+                query_builder = query_builder.filter(distance <= max_distance)
+                query_builder = query_builder.order_by(distance).limit(top_k)
 
-                    # Convert to list if it's a numpy array or other array-like object
-                    chunk_emb = chunk.embedding
-                    if hasattr(chunk_emb, 'tolist'):
-                        chunk_emb = chunk_emb.tolist()
-                    elif not isinstance(chunk_emb, list):
-                        # Might be JSON string - try to parse
-                        import json
-                        if isinstance(chunk_emb, str):
-                            try:
-                                chunk_emb = json.loads(chunk_emb)
-                            except:
-                                logger.warning(f"Chunk {chunk.id}: Failed to parse embedding JSON string")
-                                continue
-                        else:
-                            chunk_emb = list(chunk_emb)
+                logger.info(f"📊 Executing vector similarity search with HNSW index...")
+                db_results = query_builder.all()
 
-                    if not chunk_emb or len(chunk_emb) == 0:
-                        if processed_count <= 3:
-                            logger.debug(f"Chunk {chunk.id}: embedding is empty, skipping")
-                        continue
-
-                    if processed_count <= 3:  # Log first few successful embeddings
-                        logger.debug(f"Chunk {chunk.id}: embedding has {len(chunk_emb)} dimensions")
-
-                    similarity = self.embedding_service.compute_similarity(
-                        query_embedding,
-                        chunk_emb
-                    )
-
-                    if processed_count <= 3:  # Log first few similarities
-                        logger.info(f"Chunk {chunk.id}: similarity = {similarity:.4f} (threshold: {min_similarity})")
-
-                    if similarity >= min_similarity:
-                        results.append({
+                results = []
+                for chunk, document, sim_score in db_results:
+                    results.append({
                         'chunk_id': chunk.id,
                         'document_id': document.id,
                         'document_title': document.title,
                         'content': chunk.content,
-                        'similarity': similarity,
+                        'similarity': float(sim_score),
                         'section_path': chunk.get_section_path(),
                         'content_type': chunk.content_type,
                         'word_count': chunk.word_count,
                         'metadata': chunk.extraction_metadata
                     })
-                except Exception as e:
-                    error_count += 1
-                    logger.warning(f"❌ Error processing chunk {chunk.id}: {e}")
-                    continue
 
-            logger.info(f"✅ Processed {processed_count} chunks, {error_count} errors, {len(results)} results above threshold {min_similarity}")
+                logger.info(f"✅ Found {len(results)} results above threshold {min_similarity}")
+                return results
 
-            # Sort by similarity and return top_k
-            results.sort(key=lambda x: x['similarity'], reverse=True)
-            return results[:top_k]
+            else:
+                # SQLite fallback - use Python-based similarity
+                logger.info(f"🔍 Vector search (Python/SQLite): dimensions={len(query_embedding)}, top_k={top_k}, min_similarity={min_similarity}")
+
+                query_builder = self.db.query(Chunk, Document).join(
+                    Document, Chunk.document_id == Document.id
+                ).filter(
+                    Document.user_id == self.user_id,
+                    Document.processing_status == "completed",
+                    Chunk.embedding.isnot(None)
+                )
+
+                if document_ids:
+                    query_builder = query_builder.filter(Document.id.in_(document_ids))
+
+                all_chunks = query_builder.all()
+                logger.info(f"📦 Computing similarities for {len(all_chunks)} chunks...")
+
+                results = []
+                query_vec = np.array(query_embedding)
+                query_norm = np.linalg.norm(query_vec)
+
+                for chunk, document in all_chunks:
+                    try:
+                        chunk_emb = chunk.embedding
+                        if hasattr(chunk_emb, 'tolist'):
+                            chunk_emb = chunk_emb.tolist()
+                        elif not isinstance(chunk_emb, list):
+                            import json
+                            if isinstance(chunk_emb, str):
+                                chunk_emb = json.loads(chunk_emb)
+                            else:
+                                chunk_emb = list(chunk_emb)
+
+                        if not chunk_emb:
+                            continue
+
+                        chunk_vec = np.array(chunk_emb)
+                        chunk_norm = np.linalg.norm(chunk_vec)
+
+                        if query_norm == 0 or chunk_norm == 0:
+                            continue
+
+                        similarity = float(np.dot(query_vec, chunk_vec) / (query_norm * chunk_norm))
+
+                        if similarity >= min_similarity:
+                            results.append({
+                                'chunk_id': chunk.id,
+                                'document_id': document.id,
+                                'document_title': document.title,
+                                'content': chunk.content,
+                                'similarity': similarity,
+                                'section_path': chunk.get_section_path(),
+                                'content_type': chunk.content_type,
+                                'word_count': chunk.word_count,
+                                'metadata': chunk.extraction_metadata
+                            })
+                    except Exception as e:
+                        logger.warning(f"Error processing chunk {chunk.id}: {e}")
+                        continue
+
+                # Sort and return top_k
+                results.sort(key=lambda x: x['similarity'], reverse=True)
+                logger.info(f"✅ Found {len(results[:top_k])} results above threshold {min_similarity}")
+                return results[:top_k]
 
         except Exception as e:
-            logger.error(f"Error searching documents: {e}")
+            logger.error(f"Error searching documents with vector operations: {e}")
+            logger.exception(e)  # Full stack trace for debugging
             return []

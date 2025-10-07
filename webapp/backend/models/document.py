@@ -175,8 +175,13 @@ class Chunk(BaseModel, SecurityAuditMixin):
         Index('idx_chunk_order', 'document_id', 'chunk_order'),
         Index('idx_chunk_hash', 'content_hash'),
         Index('idx_chunk_type', 'content_type'),
-        Index('idx_chunk_embedding', 'embedding', postgresql_using='hnsw',
-              postgresql_with={'m': 16, 'ef_construction': 64}),  # HNSW index for vector similarity
+        # HNSW index for vector similarity with cosine distance
+        # m: max number of connections per layer (16 = good balance)
+        # ef_construction: size of dynamic candidate list (64 = good quality)
+        Index('idx_chunk_embedding', 'embedding',
+              postgresql_using='hnsw',
+              postgresql_with={'m': 16, 'ef_construction': 64},
+              postgresql_ops={'embedding': 'vector_cosine_ops'}),
     )
 
     def __repr__(self):
@@ -203,13 +208,37 @@ class Chunk(BaseModel, SecurityAuditMixin):
         return f"Chunk {self.chunk_order}"
 
     def calculate_similarity(self, query_embedding: List[float]) -> Optional[float]:
-        """Calculate cosine similarity with query embedding"""
+        """
+        Calculate cosine similarity with query embedding
+
+        Note: For production use, prefer database-level similarity search using
+        pgvector operators for better performance with HNSW index.
+
+        Args:
+            query_embedding: Query vector to compare against
+
+        Returns:
+            Cosine similarity score (0-1), or None if embeddings unavailable
+        """
         if not self.embedding or not query_embedding:
             return None
 
-        # This would typically be done at the database level using pgvector
-        # For now, return None to indicate database-level calculation needed
-        return None
+        # This method is for fallback/debugging only
+        # In production, use pgvector's cosine_distance operator in queries
+        # which leverages the HNSW index for O(log n) performance
+        try:
+            import numpy as np
+            from numpy.linalg import norm
+
+            # Convert embeddings to numpy arrays
+            emb1 = np.array(self.embedding)
+            emb2 = np.array(query_embedding)
+
+            # Calculate cosine similarity
+            similarity = np.dot(emb1, emb2) / (norm(emb1) * norm(emb2))
+            return float(similarity)
+        except Exception:
+            return None
 
     def get_metadata_summary(self) -> dict:
         """Get chunk metadata summary"""

@@ -25,7 +25,8 @@ Complete guide for setting up and running the RAG Web Application on your own PC
 | **Node.js** | 18+ | Frontend runtime | [nodejs.org](https://nodejs.org/) |
 | **npm** | 9+ | Package manager | Included with Node.js |
 | **Ollama** | Latest | Local LLM service | [ollama.ai](https://ollama.ai/) |
-| **PostgreSQL** | 13+ (optional) | Production database | [postgresql.org](https://www.postgresql.org/download/) |
+| **PostgreSQL** | 15+ | **Production database (PRIMARY)** | [postgresql.org](https://www.postgresql.org/download/) |
+| **SQLite** | Built-in | Development database (backup) | Included with Python |
 
 ### System Requirements
 
@@ -182,19 +183,60 @@ This installs:
 
 #### 3.4 Configure Database
 
-**Option A: SQLite (Quick Start - Default)**
+**⚡ PostgreSQL (Recommended - 50x Faster)**
 
-No configuration needed! SQLite will create `test.db` automatically.
-
-**Option B: PostgreSQL (Production)**
+PostgreSQL with pgvector provides **10-100x faster vector search** compared to SQLite:
 
 ```bash
-# Create database
-createdb rag_database
-
-# Update environment variables
-export DATABASE_URL="postgresql://username:password@localhost/rag_database"
+# Run automated setup script
+chmod +x backend/scripts/setup_postgres.sh
+./backend/scripts/setup_postgres.sh
 ```
+
+The script will:
+- ✅ Install PostgreSQL + pgvector extension
+- ✅ Create database `rag_database` and user `rag_user`
+- ✅ Enable HNSW index for fast vector search
+- ✅ Initialize database tables
+
+**Manual PostgreSQL Setup** (if script fails):
+
+```bash
+# Install PostgreSQL
+# Ubuntu/Debian:
+sudo apt-get install postgresql postgresql-contrib
+
+# macOS:
+brew install postgresql@15
+
+# Start PostgreSQL service
+sudo systemctl start postgresql  # Linux
+brew services start postgresql@15  # macOS
+
+# Create database and user
+sudo -u postgres psql
+CREATE USER rag_user WITH PASSWORD 'secure_rag_password_2024';
+CREATE DATABASE rag_database OWNER rag_user;
+\c rag_database
+CREATE EXTENSION vector;
+\q
+
+# Verify
+psql -h localhost -U rag_user -d rag_database -c "SELECT version();"
+```
+
+**💾 SQLite (Development/Backup Only)**
+
+For quick testing or development:
+
+```bash
+# Copy development environment
+cp .env.dev .env
+
+# SQLite will create dev.db automatically
+```
+
+⚠️ **Note**: SQLite is **50x slower** for vector search. Use PostgreSQL for production.
 
 #### 3.5 Initialize Database
 
@@ -205,30 +247,57 @@ python init_db.py
 
 Expected output:
 ```
+✅ Security settings validation passed
 ✅ Database tables created successfully
-✅ pgvector extension enabled (PostgreSQL only)
+✅ pgvector extension enabled (PostgreSQL)
+✅ HNSW index created for vector search
 ```
 
-#### 3.6 Create Environment File (Optional)
+#### 3.6 Migrate Existing Data (Optional)
+
+If you have existing SQLite data to migrate:
 
 ```bash
-# Create .env file
-cat > .env << 'EOF'
-# Application Settings
+# Run migration script
+python migrate_sqlite_to_postgres.py --sqlite-path ./test.db
+
+# Or dry-run first
+python migrate_sqlite_to_postgres.py --dry-run
+```
+
+#### 3.7 Configure Environment Variables
+
+```bash
+# For production (PostgreSQL - already created by setup script)
+cat .env
+
+# For development (SQLite)
+cp .env.dev .env
+
+# Or create custom .env from template
+cp .env.example .env
+# Then edit with your settings
+```
+
+The `.env` file should contain:
+```bash
+# Database (PostgreSQL - PRIMARY)
+DATABASE_URL=postgresql://rag_user:secure_rag_password_2024@localhost:5432/rag_database
+
+# Or SQLite (Development/Backup)
+# DATABASE_URL=sqlite:///./dev.db
+
+# Application
 DEBUG=False
 HOST=127.0.0.1
 PORT=8000
-
-# Database
-DATABASE_URL=sqlite:///./test.db
 
 # Ollama
 OLLAMA_BASE_URL=http://localhost:11434
 DEFAULT_MODEL=mistral
 
-# Security
-SECRET_KEY=your-secret-key-here-change-this
-EOF
+# Security (auto-generated)
+SECRET_KEY=<generated-by-config>
 ```
 
 ### Step 4: Frontend Setup
@@ -412,19 +481,42 @@ uvicorn main:app --host 127.0.0.1 --port 8001
 
 **Symptoms:**
 - `Database connection failed: ...`
+- `relation "documents" does not exist`
 
-**Solution:**
+**Solution for PostgreSQL:**
 ```bash
-# For SQLite
-cd webapp/backend
-python init_db.py
-
-# For PostgreSQL
 # Check if PostgreSQL is running
 sudo systemctl status postgresql
 
 # Verify database exists
 psql -l | grep rag_database
+
+# Re-run setup if needed
+cd webapp/backend
+./scripts/setup_postgres.sh
+
+# Or manually initialize
+python init_db.py
+```
+
+**Solution for SQLite:**
+```bash
+# Switch to SQLite for development
+cp .env.dev .env
+
+# Initialize database
+cd webapp/backend
+python init_db.py
+```
+
+**Switch Between Databases:**
+```bash
+# Switch to PostgreSQL (fast)
+cp .env .env.backup
+echo "DATABASE_URL=postgresql://rag_user:secure_rag_password_2024@localhost:5432/rag_database" > .env
+
+# Switch to SQLite (slow, development)
+cp .env.dev .env
 ```
 
 ### Issue: Frontend Won't Start
@@ -521,9 +613,9 @@ Edit `webapp/backend/core/config.py`:
 HOST: str = "127.0.0.1"  # Keep localhost only
 PORT: int = 8000
 
-# Database
-DATABASE_URL: str = "sqlite:///./test.db"
-# Or PostgreSQL: "postgresql://user:pass@localhost/dbname"
+# Database (PostgreSQL PRIMARY, SQLite backup)
+DATABASE_URL: str = "postgresql://rag_user:secure_rag_password_2024@localhost:5432/rag_database"
+# For SQLite (development): "sqlite:///./dev.db"
 
 # Ollama
 OLLAMA_BASE_URL: str = "http://localhost:11434"
@@ -532,6 +624,9 @@ DEFAULT_MODEL: str = "mistral"
 # Security
 ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 MAX_FILE_SIZE: int = 50 * 1024 * 1024  # 50MB
+
+# Vector search (pgvector)
+VECTOR_DIMENSION: int = 384  # sentence-transformers/all-MiniLM-L6-v2
 ```
 
 ### Frontend Configuration

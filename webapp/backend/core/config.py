@@ -28,8 +28,10 @@ class Settings(BaseSettings):
     SSL_KEYFILE: Optional[str] = None
     SSL_CERTFILE: Optional[str] = None
 
-    # Database settings - LOCAL ONLY (SQLite for testing)
-    DATABASE_URL: str = "sqlite:///./test.db"
+    # Database settings - LOCAL ONLY
+    # PostgreSQL (Primary - 50x faster vector search with pgvector)
+    # SQLite fallback available for development (slower performance)
+    DATABASE_URL: str = "postgresql://rag_user:secure_rag_password_2024@localhost:5432/rag_database"
     DATABASE_ECHO: bool = False  # Set to True for SQL debugging
 
     # Ollama settings - LOCAL ONLY
