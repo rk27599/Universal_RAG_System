@@ -105,6 +105,9 @@ dmypy.json
 # VS Code
 .vscode/
 
+# Claude Code settings
+.claude/settings.local.json
+
 # macOS
 .DS_Store
 
