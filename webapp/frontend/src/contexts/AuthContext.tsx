@@ -171,6 +171,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         const { token, user } = response.data;
         apiService.setAuthToken(token);
         dispatch({ type: 'AUTH_SUCCESS', payload: user });
+
+        // Notify other contexts that user has logged in
+        window.dispatchEvent(new CustomEvent('auth:login'));
+
         return true;
       } else {
         dispatch({ type: 'AUTH_FAILURE', payload: response.message || 'Login failed' });

@@ -63,7 +63,8 @@ type ChatAction =
   | { type: 'UPDATE_MESSAGE'; payload: { messageId: string; updates: Partial<ChatMessage> } }
   | { type: 'SET_MODELS'; payload: string[] }
   | { type: 'SET_SELECTED_MODEL'; payload: string }
-  | { type: 'CLEAR_MESSAGES' };
+  | { type: 'CLEAR_MESSAGES' }
+  | { type: 'RESET_STATE' };
 
 const initialState: ChatState = {
   conversations: [],
@@ -139,6 +140,9 @@ const chatReducer = (state: ChatState, action: ChatAction): ChatState => {
     case 'CLEAR_MESSAGES':
       return { ...state, messages: [] };
 
+    case 'RESET_STATE':
+      return initialState;
+
     default:
       return state;
   }
@@ -164,116 +168,159 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
 
   // Initialize WebSocket connection
   useEffect(() => {
-    const token = localStorage.getItem('authToken');
-    if (!token) {
-      console.log('🔌 No auth token - skipping WebSocket connection');
-      return;
-    }
-
-    console.log('🔌 Connecting to WebSocket with token...');
-    socketRef.current = io(config.websocket.url, {
-      auth: { token },
-      transports: ['polling', 'websocket'],
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-    });
-
-    const socket = socketRef.current;
-
-    socket.on('connect', () => {
-      dispatch({ type: 'SET_CONNECTED', payload: true });
-      console.log('🔌 WebSocket connected');
-    });
-
-    socket.on('disconnect', () => {
-      dispatch({ type: 'SET_CONNECTED', payload: false });
-      console.log('🔌 WebSocket disconnected');
-    });
-
-    // Handle streaming message chunks (real-time updates)
-    let streamingMessageId: string | null = null;
-    let streamingContent = '';
-
-    socket.on('message_chunk', (data: { content: string }) => {
-      streamingContent += data.content;
-
-      // Update or create streaming message
-      if (!streamingMessageId) {
-        streamingMessageId = `streaming-${Date.now()}`;
-        const streamingMessage: ChatMessage = {
-          id: streamingMessageId,
-          role: 'assistant',
-          content: streamingContent,
-          timestamp: new Date().toISOString(),
-        };
-        dispatch({ type: 'ADD_MESSAGE', payload: streamingMessage });
-      } else {
-        dispatch({
-          type: 'UPDATE_MESSAGE',
-          payload: {
-            messageId: streamingMessageId,
-            updates: { content: streamingContent }
-          }
-        });
+    const connectWebSocket = () => {
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        console.log('🔌 No auth token - skipping WebSocket connection');
+        return;
       }
-    });
 
-    // Handle complete message - replace streaming message with final version
-    socket.on('message', (message: ChatMessage) => {
-      console.log('📨 Received message with metadata:', message.metadata);
-      if (streamingMessageId) {
-        // Update the streaming message with the real ID and metadata
-        dispatch({
-          type: 'UPDATE_MESSAGE',
-          payload: {
-            messageId: streamingMessageId,
-            updates: {
-              id: message.id,
-              content: message.content,
-              metadata: message.metadata
+      // Disconnect existing socket if any
+      if (socketRef.current) {
+        console.log('🔌 Disconnecting existing WebSocket...');
+        socketRef.current.disconnect();
+      }
+
+      console.log('🔌 Connecting to WebSocket with token...');
+      socketRef.current = io(config.websocket.url, {
+        auth: { token },
+        transports: ['polling', 'websocket'],
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
+      });
+
+      const socket = socketRef.current;
+
+      socket.on('connect', () => {
+        dispatch({ type: 'SET_CONNECTED', payload: true });
+        console.log('🔌 WebSocket connected');
+      });
+
+      socket.on('disconnect', () => {
+        dispatch({ type: 'SET_CONNECTED', payload: false });
+        console.log('🔌 WebSocket disconnected');
+      });
+
+      // Handle streaming message chunks (real-time updates)
+      let streamingMessageId: string | null = null;
+      let streamingContent = '';
+
+      socket.on('message_chunk', (data: { content: string }) => {
+        streamingContent += data.content;
+
+        // Update or create streaming message
+        if (!streamingMessageId) {
+          streamingMessageId = `streaming-${Date.now()}`;
+          const streamingMessage: ChatMessage = {
+            id: streamingMessageId,
+            role: 'assistant',
+            content: streamingContent,
+            timestamp: new Date().toISOString(),
+          };
+          dispatch({ type: 'ADD_MESSAGE', payload: streamingMessage });
+        } else {
+          dispatch({
+            type: 'UPDATE_MESSAGE',
+            payload: {
+              messageId: streamingMessageId,
+              updates: { content: streamingContent }
             }
-          }
-        });
+          });
+        }
+      });
+
+      // Handle complete message - replace streaming message with final version
+      socket.on('message', (message: ChatMessage) => {
+        console.log('📨 Received message with metadata:', message.metadata);
+        if (streamingMessageId) {
+          // Update the streaming message with the real ID and metadata
+          dispatch({
+            type: 'UPDATE_MESSAGE',
+            payload: {
+              messageId: streamingMessageId,
+              updates: {
+                id: message.id,
+                content: message.content,
+                metadata: message.metadata
+              }
+            }
+          });
+          streamingMessageId = null;
+          streamingContent = '';
+        } else {
+          // No streaming message, just add the complete message
+          dispatch({ type: 'ADD_MESSAGE', payload: message });
+        }
+        dispatch({ type: 'SET_TYPING', payload: false });
+      });
+
+      socket.on('typing', () => {
+        dispatch({ type: 'SET_TYPING', payload: true });
+        // Reset streaming state
         streamingMessageId = null;
         streamingContent = '';
-      } else {
-        // No streaming message, just add the complete message
-        dispatch({ type: 'ADD_MESSAGE', payload: message });
-      }
-      dispatch({ type: 'SET_TYPING', payload: false });
-    });
+      });
 
-    socket.on('typing', () => {
-      dispatch({ type: 'SET_TYPING', payload: true });
-      // Reset streaming state
-      streamingMessageId = null;
-      streamingContent = '';
-    });
+      socket.on('typing_stop', () => {
+        dispatch({ type: 'SET_TYPING', payload: false });
+      });
 
-    socket.on('typing_stop', () => {
-      dispatch({ type: 'SET_TYPING', payload: false });
-    });
+      socket.on('error', (error: any) => {
+        dispatch({ type: 'SET_ERROR', payload: error.message || 'Connection error' });
+        console.error('WebSocket error:', error);
+      });
+    };
 
-    socket.on('error', (error: any) => {
-      dispatch({ type: 'SET_ERROR', payload: error.message || 'Connection error' });
-      console.error('WebSocket error:', error);
-    });
+    // Connect on mount
+    connectWebSocket();
+
+    // Listen for login events and reconnect WebSocket
+    const handleAuthLogin = () => {
+      console.log('🔄 Reconnecting WebSocket after login');
+      connectWebSocket();
+    };
+
+    window.addEventListener('auth:login', handleAuthLogin);
 
     return () => {
-      socket.disconnect();
+      window.removeEventListener('auth:login', handleAuthLogin);
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+      }
     };
+  }, []);
+
+  // Listen for logout events and reset all chat state
+  useEffect(() => {
+    const handleAuthLogout = () => {
+      console.log('🔄 Chat state reset on logout');
+
+      // Disconnect WebSocket
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+
+      // Reset all state to initial values
+      dispatch({ type: 'RESET_STATE' });
+    };
+
+    window.addEventListener('auth:logout', handleAuthLogout);
+    return () => window.removeEventListener('auth:logout', handleAuthLogout);
   }, []);
 
   // Load initial data only when user has a valid token
   useEffect(() => {
-    const token = localStorage.getItem('authToken');
-    if (!token) {
-      return; // Don't load data if not authenticated
-    }
-
     const loadInitialData = async () => {
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        console.log('📭 No auth token - skipping data load');
+        return; // Don't load data if not authenticated
+      }
+
       try {
+        console.log('📥 Loading chat data for authenticated user...');
         dispatch({ type: 'SET_LOADING', payload: true });
 
         // Load conversations
@@ -302,7 +349,17 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       }
     };
 
+    // Load on mount
     loadInitialData();
+
+    // Listen for login events and reload data
+    const handleAuthLogin = () => {
+      console.log('🔄 Reloading chat data after login');
+      loadInitialData();
+    };
+
+    window.addEventListener('auth:login', handleAuthLogin);
+    return () => window.removeEventListener('auth:login', handleAuthLogin);
   }, []);
 
   const createConversation = async (title?: string): Promise<boolean> => {

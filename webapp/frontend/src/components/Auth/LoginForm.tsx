@@ -3,7 +3,7 @@
  * Provides secure login with validation and error handling
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Card,
@@ -82,7 +82,9 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
 
     const success = await login(formData.username, formData.password);
     if (success) {
-      // Login success is handled by the auth context
+      // Clear form data on successful login
+      setFormData({ username: '', password: '' });
+      setShowPassword(false);
       console.log('Login successful');
     }
   };
@@ -90,6 +92,18 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
   const handleTogglePasswordVisibility = () => {
     setShowPassword(!showPassword);
   };
+
+  // Listen for logout events and clear form data
+  useEffect(() => {
+    const handleAuthLogout = () => {
+      setFormData({ username: '', password: '' });
+      setShowPassword(false);
+      setValidationErrors({});
+    };
+
+    window.addEventListener('auth:logout', handleAuthLogout);
+    return () => window.removeEventListener('auth:logout', handleAuthLogout);
+  }, []);
 
   return (
     <Box

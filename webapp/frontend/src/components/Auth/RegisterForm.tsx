@@ -3,7 +3,7 @@
  * Provides secure account creation with validation
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Card,
@@ -156,7 +156,16 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSwitchToLogin }) => {
     });
 
     if (success) {
-      // Registration success is handled by the auth context
+      // Clear form data on successful registration
+      setFormData({
+        username: '',
+        email: '',
+        fullName: '',
+        password: '',
+        confirmPassword: '',
+      });
+      setShowPassword(false);
+      setShowConfirmPassword(false);
       console.log('Registration successful');
     }
   };
@@ -168,6 +177,25 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSwitchToLogin }) => {
       setShowConfirmPassword(!showConfirmPassword);
     }
   };
+
+  // Listen for logout events and clear form data
+  useEffect(() => {
+    const handleAuthLogout = () => {
+      setFormData({
+        username: '',
+        email: '',
+        fullName: '',
+        password: '',
+        confirmPassword: '',
+      });
+      setShowPassword(false);
+      setShowConfirmPassword(false);
+      setValidationErrors({});
+    };
+
+    window.addEventListener('auth:logout', handleAuthLogout);
+    return () => window.removeEventListener('auth:logout', handleAuthLogout);
+  }, []);
 
   const passwordStrength = getPasswordStrength(formData.password);
 
