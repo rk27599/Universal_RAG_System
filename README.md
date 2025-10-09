@@ -1,529 +1,381 @@
-# Universal RAG System for Any Website
+# Secure RAG System - Web Application
 
-An advanced **Retrieval-Augmented Generation (RAG) system** that works with **any website**. Features structure-aware web scraping, semantic chunking, enhanced TF-IDF retrieval, intelligent caching, and local LLM integration via Ollama.
+A production-ready **Retrieval-Augmented Generation (RAG) web application** with complete data sovereignty. Features secure authentication, document upload, semantic search, real-time chat with local LLMs, and PostgreSQL vector storage.
 
-## 🚀 Features
+## 🚀 Key Features
 
-- **🌍 Universal Compatibility**: Works with **any website** automatically - documentation, blogs, APIs, etc.
-- **📂 Local File Processing**: Process HTML files directly with async performance
-- **🏗️ Structure-Aware Scraping**: Preserves HTML hierarchy (h1, h2, h3) and document structure
-- **🧠 Semantic Chunking**: Respects content sections vs random word splits
-- **🔍 Enhanced Retrieval**: High similarity scores (0.6+ typical vs 0.3 legacy systems)
-- **📊 Rich Metadata**: Page titles, section hierarchy, content types, domain information
-- **⚡ Dual Scraper Support**: Both sync (reliable) and async (3-5x faster) scrapers
-- **🔄 Mixed Source Processing**: Combine web scraping + local files in single pipeline
-- **💾 Smart Caching**: Content-based caching with 40-60% hit rates
-- **🚀 High Performance**: Concurrent processing with configurable limits
-- **🤖 Local LLM Integration**: Works with Ollama for complete text generation
-- **🚦 Respectful Crawling**: Honors robots.txt, implements rate limiting, same-domain filtering
+- **🔐 Secure Authentication**: JWT-based auth with bcrypt password hashing
+- **📄 Document Processing**: Upload HTML, PDF, TXT files with async processing
+- **🧠 Semantic Search**: PostgreSQL pgvector with 50x faster vector search
+- **💬 Real-Time Chat**: WebSocket-based chat with streaming responses
+- **🤖 Local LLM Integration**: Ollama integration (Mistral, Llama2, CodeLlama)
+- **📊 Rich Metadata**: Track sources, sections, and similarity scores
+- **🎨 Modern UI**: React + TypeScript + Material-UI frontend
+- **⚡ High Performance**: Async document processing, connection pooling
+- **🛡️ Security-First**: Local-only deployment, no external dependencies
+- **📈 Production-Ready**: Multi-worker support, SSL/TLS, rate limiting
 
 ## 📋 Requirements
 
-- **Python 3.12+** (migrated from 3.10 - see performance improvements below)
-- Dependencies listed in `requirements.txt`
-- Optional: Ollama for full text generation capabilities
+- **Python 3.12+**
+- **Node.js 18+** (for frontend)
+- **PostgreSQL 14+** with pgvector extension
+- **Ollama** (for LLM integration)
 
-## 🔧 Installation
+## 🔧 Quick Start
 
-1. Clone the repository:
+### 1. Clone Repository
 ```bash
 git clone https://github.com/rk27599/Python_RAG.git
 cd Python_RAG
 ```
 
-2. Install dependencies:
+### 2. Setup Backend
 ```bash
+cd webapp/backend
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
+
+# Configure environment
+cp .env.example .env
+# Edit .env with your database credentials
+
+# Initialize database
+python init_db.py
 ```
 
-3. (Optional) Install and start Ollama for full generation:
+### 3. Setup Frontend
 ```bash
-# Install Ollama from https://ollama.ai
+cd webapp/frontend
+npm install
+npm start  # Development server on http://localhost:3000
+```
+
+### 4. Start Ollama (Optional but Recommended)
+```bash
+# Install from https://ollama.ai
 ollama serve
 ollama pull mistral
 ```
 
-## 🚀 Quick Start
-
-### Basic Usage Example
+### 5. Run Application
 ```bash
-python examples/basic_usage.py
+# Backend (from webapp/backend/)
+python main.py
+
+# Frontend (from webapp/frontend/)
+npm start
 ```
 
-### Interactive Jupyter Notebook
-```bash
-jupyter notebook notebooks/RAG_HTML.ipynb
-# or
-jupyter lab notebooks/RAG_HTML.ipynb
-```
-
-### Custom Usage with Any Website
-```python
-from src.rag_system import RAGSystem
-
-# Initialize system
-rag_system = RAGSystem()
-
-# Scrape and process any website
-success = rag_system.scrape_and_process_website(
-    start_urls=["https://docs.python.org/3/"],
-    max_pages=15,
-    output_file="data/python_docs.json"
-)
-
-# Test retrieval only
-result = rag_system.demo_query("How to define functions in Python?", top_k=3)
-
-# Full generation with Ollama (requires ollama serve)
-answer = rag_system.rag_query("How to define functions in Python?", top_k=3, model="mistral")
-print(answer)
-```
-
-### High-Performance Async Scraping
-```python
-import asyncio
-from src.async_web_scraper import AsyncWebScraper, ScrapingConfig
-
-async def fast_scrape():
-    # Configure for high performance
-    config = ScrapingConfig(
-        concurrent_limit=6,
-        max_pages=50,
-        requests_per_second=8.0
-    )
-
-    async with AsyncWebScraper(config) as scraper:
-        results = await scraper.scrape_website_async([
-            "https://docs.python.org/3/"
-        ])
-
-        print(f"✅ Processed {len(results['documents'])} pages")
-        print(f"📊 Generated {len(results['semantic_chunks'])} chunks")
-
-# Run async scraping
-success = asyncio.run(fast_scrape())
-```
-
-### Local File Processing
-```python
-import asyncio
-from src.async_web_scraper import AsyncWebScraper
-
-# Process local HTML files with high performance
-async def process_local_docs():
-    # Using the new static method for easy access
-    results = await AsyncWebScraper.process_local_files_fast(
-        file_paths=[
-            "./docs/user-guide.html",
-            "./docs/api-reference.html",
-            "./docs/tutorials.html"
-        ],
-        output_file="data/local_documentation.json",
-        concurrent_limit=4
-    )
-
-    metadata = results["metadata"]
-    print(f"✅ Processed {metadata['total_files']} local files")
-    print(f"📊 Created {metadata['total_chunks']} semantic chunks")
-    print(f"⚡ Processing rate: {metadata['files_per_second']:.1f} files/sec")
-
-    return results
-
-# Process local documentation
-results = asyncio.run(process_local_docs())
-```
-
-### Mixed Source Processing
-```python
-from src.web_scraper import WebScraper
-
-# Process both web content and local files together
-scraper = WebScraper()
-
-results = scraper.process_mixed_sources(
-    web_urls=["https://docs.python.org/3/tutorial/"],
-    local_files=["./docs/custom-guide.html", "./docs/internal-api.html"],
-    output_file="data/comprehensive_docs.json",
-    max_pages=20
-)
-
-print(f"📊 Mixed Processing Results:")
-print(f"  Total documents: {results['metadata']['total_documents']}")
-print(f"  Semantic chunks: {results['metadata']['total_chunks']}")
-print(f"  Sources: Web + Local files")
-```
+Access the application at **http://localhost:3000**
 
 ## 📁 Project Structure
 
-This repository contains **two main components**:
-
-### 1. Core RAG Library (Main Focus) - Document Parsing & RAG
 ```
-├── README.md                         # This file
-├── CLAUDE.md                        # AI assistant guide & detailed docs
+/home/rkpatel/RAG/
+├── README.md                        # This file
+├── CLAUDE.md                        # Project instructions for AI assistants
 ├── LICENSE                          # Open source license
-├── requirements.txt                 # Core library dependencies
+├── requirements.txt                 # Core Python dependencies
 │
-├── src/                             # Core RAG library source code
-│   ├── web_scraper.py              # Synchronous web scraper (643 lines)
-│   ├── async_web_scraper.py        # Async scraper (751 lines, 3-5x faster)
-│   └── rag_system.py               # Main RAG system (639 lines)
+├── docs/                            # Webapp documentation
+│   ├── NETWORK_SETUP.md            # Network access configuration
+│   └── PRODUCTION_DEPLOYMENT.md     # Production deployment guide
 │
-├── docs/                            # Core RAG documentation
-│   ├── README.md                   # Documentation index
-│   ├── api/                        # API reference
-│   │   ├── rag_system.md           # RAG system API
-│   │   ├── web_scraper.md          # Scraper API
-│   │   └── async_web_scraper.md    # Async scraper API
-│   ├── guides/                     # User guides
-│   │   ├── getting-started.md      # Getting started guide
-│   │   ├── performance.md          # Performance optimization
-│   │   └── troubleshooting.md      # Troubleshooting guide
-│   ├── architecture.md             # System architecture
-│   ├── benchmarks/                 # Performance benchmarks
-│   └── security/                   # Security reports
+├── webapp/                          # 🎯 Main Web Application
+│   ├── README.md                   # Webapp overview
+│   ├── INSTALLATION_GUIDE.md       # Detailed setup instructions
+│   │
+│   ├── backend/                    # FastAPI Backend (Python)
+│   │   ├── api/                   # REST API endpoints
+│   │   │   ├── auth.py           # Authentication
+│   │   │   ├── chat.py           # WebSocket chat + messages
+│   │   │   ├── documents.py      # Document upload/management
+│   │   │   └── models.py         # Ollama model info
+│   │   │
+│   │   ├── core/                  # Core configuration
+│   │   │   ├── config.py         # Settings management
+│   │   │   ├── database.py       # SQLAlchemy setup
+│   │   │   └── security.py       # JWT & password hashing
+│   │   │
+│   │   ├── models/                # Database models
+│   │   │   ├── user.py           # User model
+│   │   │   ├── document.py       # Document & Chunk models
+│   │   │   └── conversation.py   # Chat models
+│   │   │
+│   │   ├── services/              # Business logic
+│   │   │   ├── document_service.py    # Document processing
+│   │   │   ├── embedding_service.py   # Vector embeddings
+│   │   │   ├── rag_service.py         # RAG retrieval
+│   │   │   └── ollama_service.py      # LLM integration
+│   │   │
+│   │   ├── utils/                 # Utility modules
+│   │   │   └── async_web_scraper.py   # HTML content extraction
+│   │   │
+│   │   ├── main.py                # FastAPI application entry
+│   │   ├── init_db.py             # Database initialization
+│   │   └── requirements.txt       # Backend dependencies
+│   │
+│   ├── frontend/                   # React Frontend (TypeScript)
+│   │   ├── src/
+│   │   │   ├── components/        # React components
+│   │   │   │   ├── Auth/         # Login, Register
+│   │   │   │   ├── Chat/         # Chat interface, conversations
+│   │   │   │   ├── Documents/    # Upload, document list
+│   │   │   │   ├── Layout/       # App layout, sidebar
+│   │   │   │   └── Settings/     # Model settings
+│   │   │   │
+│   │   │   ├── contexts/          # React contexts
+│   │   │   │   ├── AuthContext.tsx    # Auth state
+│   │   │   │   └── ChatContext.tsx    # Chat state + WebSocket
+│   │   │   │
+│   │   │   ├── services/          # API services
+│   │   │   │   └── api.ts        # Axios API client
+│   │   │   │
+│   │   │   ├── config/            # Configuration
+│   │   │   │   └── config.ts     # App settings
+│   │   │   │
+│   │   │   ├── App.tsx            # Main app component
+│   │   │   └── index.tsx          # React entry point
+│   │   │
+│   │   ├── public/                # Static assets
+│   │   ├── package.json           # Node dependencies
+│   │   └── README.md              # Frontend documentation
+│   │
+│   └── docs/                       # Webapp Documentation
+│       ├── README.md              # Docs index
+│       ├── ADMIN_GUIDE.md         # Admin operations
+│       ├── USER_GUIDE.md          # User manual
+│       ├── DEPLOYMENT_GUIDE.md    # Docker deployment
+│       ├── HANDOVER_DOCUMENT.md   # Project handover
+│       └── architecture/          # Architecture decisions
 │
-├── examples/                        # Usage examples
-│   ├── basic_usage.py              # Simple example
-│   ├── advanced_usage.py           # Advanced features
-│   ├── benchmarking.py             # Performance testing
-│   └── generic_usage.py            # Generic system demo
+├── archive/                        # Old RAG System (Reference)
+│   └── old_rag_system/
+│       ├── src/                   # Old RAG source code
+│       ├── examples/              # Usage examples
+│       ├── tests/                 # Tests
+│       ├── notebooks/             # Jupyter notebooks
+│       └── docs/                  # Old RAG documentation
 │
-├── tests/                           # Core RAG tests
-│   ├── test_rag_system.py          # RAG system tests
-│   ├── test_scraper.py             # Web scraper tests
-│   ├── test_async_local_files.py   # Async file processing tests
-│   ├── test_local_html.py          # Local HTML tests
-│   └── test_generic_system.py      # Generic system tests
-│
-├── scripts/                         # Utility scripts
-│   ├── add_progress_column.py      # Database utility
-│   └── process_stuck_files.py      # File processing utility
-│
-├── notebooks/                       # Jupyter notebooks
-│   └── RAG_HTML.ipynb              # Interactive demo notebook
-│
-└── data/                            # Generated data (gitignored)
-    ├── *.json                      # Scraped content
-    ├── *.txt                       # Text exports
-    └── *_cache.pkl                 # Processing caches
+└── venv/                          # Python virtual environment
 ```
 
-### 2. Optional Web Application - Full-Stack UI
-```
-└── webapp/                          # Complete web application
-    ├── README_WEBAPP.md             # Web app overview & setup
-    ├── docker-compose.prod.yml      # Production Docker setup
-    ├── .pre-commit-config.yaml      # Security validation hooks
-    │
-    ├── backend/                     # FastAPI backend (Python)
-    │   ├── api/                     # REST API endpoints
-    │   ├── core/                    # Config, security, database
-    │   ├── models/                  # Database models
-    │   ├── services/                # Business logic
-    │   ├── tests/                   # Backend unit tests
-    │   ├── main.py                  # FastAPI application
-    │   ├── init_db.py               # Database initialization
-    │   └── requirements.txt         # Backend dependencies
-    │
-    ├── frontend/                    # React frontend (TypeScript)
-    │   ├── src/                     # React source code
-    │   ├── public/                  # Static assets
-    │   ├── package.json             # Node dependencies
-    │   └── README.md                # Frontend docs
-    │
-    ├── docs/                        # Web app documentation
-    │   ├── README.md                # Docs index
-    │   ├── DEPLOYMENT.md            # Manual deployment
-    │   ├── DEPLOYMENT_GUIDE.md      # Docker deployment
-    │   ├── ADMIN_GUIDE.md           # Admin guide
-    │   ├── USER_GUIDE.md            # User guide
-    │   ├── HANDOVER_DOCUMENT.md     # Project handover
-    │   └── architecture/            # Architecture decisions
-    │
-    ├── scripts/                     # Deployment & security scripts
-    │   ├── setup_database.sh
-    │   ├── setup_ollama.sh
-    │   ├── deploy.sh
-    │   ├── backup.sh
-    │   ├── restore.sh
-    │   └── security_validator.py
-    │
-    └── tests/                       # Integration tests
-        ├── test_phase3_integration.py
-        ├── validate_phases_1_2.py
-        └── test_backend.sh
-```
+## 🎯 Main Components
 
-### Component Summary
+### Backend (FastAPI + Python)
+- **Authentication**: JWT tokens, bcrypt password hashing, session management
+- **Document Processing**: Async upload, chunking, embedding generation
+- **Vector Search**: PostgreSQL pgvector with HNSW indexing (50x faster)
+- **RAG System**: TF-IDF retrieval, semantic search, context building
+- **Chat API**: WebSocket real-time messaging, conversation management
+- **LLM Integration**: Ollama API for Mistral, Llama2, CodeLlama
 
-| Component | Purpose | Size | Tech Stack |
-|-----------|---------|------|------------|
-| **Core RAG Library** | Document parsing, RAG system | 184 KB | Python 3.12 |
-| **Core Docs** | API reference, guides | 252 KB | Markdown |
-| **Examples** | Usage examples | 76 KB | Python |
-| **Tests** | Core library tests | 52 KB | pytest |
-| **Web Application** | Optional full-stack UI | 976 MB | FastAPI + React + PostgreSQL (primary) / SQLite (backup) |
+### Frontend (React + TypeScript)
+- **Auth UI**: Login, registration, password validation
+- **Document Manager**: Drag-and-drop upload, processing status, document list
+- **Chat Interface**: Real-time messaging, conversation history, markdown rendering
+- **Settings**: Model selection, RAG parameters, temperature control
+- **Security**: Localhost-only validation, JWT authentication
 
-**Note**: The web application (`webapp/`) is **optional**. You can use the core RAG library standalone for programmatic use. See [webapp/README_WEBAPP.md](webapp/README_WEBAPP.md) for web app setup.
-
-### Database Support for Web Application
-
-The web application supports two database backends with different performance characteristics:
-
-| Database | Performance | Use Case | Vector Search Speed | Setup |
-|----------|------------|----------|---------------------|-------|
-| **PostgreSQL + pgvector** | ⚡ **10-100x faster** | **Production (PRIMARY)** | O(log n) with HNSW index | `./setup_postgres.sh` |
-| **SQLite** | Baseline | Development/Testing (BACKUP) | O(n) Python-based | Auto-created |
-
-**Why PostgreSQL?**
-- **50x faster** vector search for large document collections (100K+ chunks)
-- Native pgvector extension with HNSW (Hierarchical Navigable Small World) indexing
-- Scales to millions of documents without performance degradation
-- Production-ready with connection pooling and optimization
-
-**When to use SQLite?**
-- Quick local development and testing
-- Small document collections (<1000 chunks)
-- No setup required (auto-created on first run)
-
-**Migration**: Easily switch between databases using `.env` files:
-```bash
-# Use PostgreSQL (production)
-cp .env .env.backup
-
-# Use SQLite (development)
-cp .env.dev .env
-
-# Migrate data
-python migrate_sqlite_to_postgres.py
-```
-
-See [webapp/backend/VECTOR_SEARCH_OPTIMIZATION.md](webapp/backend/VECTOR_SEARCH_OPTIMIZATION.md) for performance benchmarks and tuning guide.
-
-## 🎯 Core Components
-
-### 1. Web Scraping System
-- **Synchronous Scraper** (`src/web_scraper.py`): Reliable, debuggable scraping
-- **Async Scraper** (`src/async_web_scraper.py`): High-performance concurrent processing
-- Works with **any website** automatically
-- Preserves HTML hierarchy and document structure
-- Respects robots.txt and implements polite crawling
-- Creates semantic chunks based on content sections
-- Smart domain filtering and depth control
-
-### 2. RAG System (`src/rag_system.py`)
-- Advanced TF-IDF with trigrams and sublinear scaling
-- Intelligent caching system for scraped data
-- Boosted scoring for different content types
-- Rich metadata tracking (page, section, content type, domain)
-- Integrates with local Ollama API for text generation
-
-### 3. Interactive Interface (`notebooks/RAG_HTML.ipynb`)
-- Jupyter notebook for experimentation with any website
-- Visual exploration of retrieval results
-- Easy testing of different queries and websites
-- Complete pipeline demonstration
+### Database (PostgreSQL + pgvector)
+- **Users**: Authentication, roles, sessions
+- **Documents**: File metadata, processing status, chunks
+- **Vectors**: Embeddings with pgvector extension, HNSW indexing
+- **Conversations**: Chat history, messages, ratings
 
 ## 📊 Performance
 
-- **Python 3.12 Benefits**: 10-15% faster than Python 3.10, improved memory efficiency
-- **Similarity Scores**: 0.6+ (2x improvement over legacy systems)
-- **Scraping Speed**: 3-5x faster with async scraper vs synchronous
-- **Cache Performance**: 40-60% hit rate for repeated scraping operations
-- **Context Quality**: Complete technical explanations with proper code examples
-- **Processing Speed**: Optimized with smart caching and concurrent processing
-- **Answer Quality**: Relevant, complete, and technically accurate responses
+- **Vector Search**: 50x faster with PostgreSQL pgvector vs Python
+- **Document Processing**: Async processing with progress tracking
+- **Real-Time Chat**: WebSocket streaming responses
+- **Concurrent Users**: Multi-worker support (4 workers in production)
+- **Connection Pooling**: Optimized database connections
+
+## 🛡️ Security Features
+
+- **Local-Only**: No external API dependencies
+- **JWT Authentication**: Secure token-based auth
+- **Password Hashing**: bcrypt with secure rounds
+- **Rate Limiting**: Prevent abuse
+- **CORS Protection**: Localhost-only by default
+- **Security Headers**: XSS, CSRF, clickjacking protection
+- **Input Validation**: Pydantic models, type checking
+
+## 📖 Documentation
+
+### Getting Started
+- [Installation Guide](webapp/INSTALLATION_GUIDE.md) - Detailed setup
+- [User Guide](webapp/docs/USER_GUIDE.md) - User manual
+- [Admin Guide](webapp/docs/ADMIN_GUIDE.md) - Admin operations
+
+### Deployment
+- [Network Setup](docs/NETWORK_SETUP.md) - LAN access configuration
+- [Production Deployment](docs/PRODUCTION_DEPLOYMENT.md) - Production guide
+- [Docker Deployment](webapp/docs/DEPLOYMENT_GUIDE.md) - Docker setup
+
+### Development
+- [Architecture](webapp/docs/architecture/) - System design
+- [Handover Document](webapp/docs/HANDOVER_DOCUMENT.md) - Project overview
 
 ## 🧪 Testing
 
-### Run Core RAG Tests
+### Backend Tests
 ```bash
-# Run all core RAG tests
-python -m pytest tests/ -v
-
-# Run specific test file
-python -m pytest tests/test_rag_system.py -v
-
-# Run with coverage
-python -m pytest tests/ --cov=src --cov-report=html
+cd webapp/backend
+pytest tests/ -v
 ```
 
-**Test Results** (27 tests):
-- ✅ 23 passed - Core RAG functionality working perfectly
-- ⚠️ 4 async tests require `pytest-asyncio` (optional)
-
-### Run Examples
+### Frontend Tests
 ```bash
-# Basic usage (recommended first test)
-python examples/basic_usage.py
-
-# Advanced features
-python examples/advanced_usage.py
-
-# Performance benchmarking
-python examples/benchmarking.py
-
-# Generic system test
-python examples/generic_usage.py
+cd webapp/frontend
+npm test
 ```
 
-### Quick Functionality Test
+### Integration Tests
 ```bash
-# Test core imports and basic functionality
-python -c "
-from src.rag_system import RAGSystem
-from src.web_scraper import WebScraper
-from src.async_web_scraper import AsyncWebScraper
-
-rag = RAGSystem()
-scraper = WebScraper()
-print('✅ All core modules imported successfully')
-"
+cd webapp
+./tests/test_backend.sh
 ```
+
+## 🚀 Deployment
+
+### Development
+```bash
+# Backend
+cd webapp/backend && python main.py
+
+# Frontend
+cd webapp/frontend && npm start
+```
+
+### Production
+```bash
+# Update configuration
+cd webapp/backend
+cp .env.example .env
+# Edit .env: DEBUG=False, SECRET_KEY=<new-key>
+
+# Build frontend
+cd ../frontend
+npm run build
+cp -r build/* ../backend/static/
+
+# Run backend (auto-serves frontend)
+cd ../backend
+python main.py  # 4 workers, docs disabled, production mode
+```
+
+See [PRODUCTION_DEPLOYMENT.md](docs/PRODUCTION_DEPLOYMENT.md) for complete guide.
 
 ## 🔧 Configuration
 
-The system works in two modes:
+### Backend (.env)
+```bash
+# Database
+DATABASE_URL=postgresql://rag_user:password@localhost:5432/rag_database
+DEBUG=False  # Set to True for development
 
-1. **Standalone (retrieval only)**: Use `demo_query()` for testing retrieval
-2. **With Ollama**: Start `ollama serve` and use `rag_query()` for full answers
+# Security
+SECRET_KEY=<generate-secure-key>
+ACCESS_TOKEN_EXPIRE_MINUTES=30
 
-Adjust retrieval parameters:
-- `top_k`: Number of results (recommended: 3-7)
-- Model selection for Ollama: `mistral`, `llama2`, etc.
+# Ollama
+OLLAMA_BASE_URL=http://localhost:11434
+DEFAULT_MODEL=mistral
 
-## 📖 Usage Examples
-
-### Local Documentation Processing
-```python
-import asyncio
-from src.async_web_scraper import AsyncWebScraper
-
-async def process_local_documentation():
-    # Find HTML files in your documentation directory
-    scraper = AsyncWebScraper()
-    html_files = scraper.find_html_files("./documentation", "**/*.html")
-
-    # Process with high-performance async method
-    results = await AsyncWebScraper.process_local_files_fast(
-        file_paths=html_files,
-        output_file="data/local_docs.json",
-        concurrent_limit=6  # Adjust based on your system
-    )
-
-    print(f"✅ Processed {results['metadata']['total_files']} files")
-    print(f"📊 Created {results['metadata']['total_chunks']} chunks")
-
-# Run local processing
-asyncio.run(process_local_documentation())
+# Server
+HOST=127.0.0.1
+PORT=8000
 ```
 
-### Work with Any Website
-```python
-from src.rag_system import RAGSystem
-
-# Initialize system
-rag_system = RAGSystem()
-
-# Scrape different types of websites
-websites = [
-    "https://docs.python.org/3/",      # Documentation
-    "https://fastapi.tiangolo.com/",   # API docs
-    "https://nodejs.org/en/docs/",     # Different tech stack
-    "https://reactjs.org/docs/"        # Frontend framework
-]
-
-for url in websites:
-    success = rag_system.scrape_and_process_website([url], max_pages=10)
-    if success:
-        result = rag_system.demo_query("How to get started?", top_k=3)
-        print(f"Results from {url}: {result}")
+### Frontend (.env)
+```bash
+REACT_APP_API_URL=http://127.0.0.1:8000
+REACT_APP_WS_URL=http://127.0.0.1:8000
+PORT=3000
 ```
 
-### Comprehensive Knowledge Base (Web + Local)
-```python
-from src.web_scraper import WebScraper
+## 🗄️ Database Setup
 
-# Create comprehensive knowledge base from multiple sources
-scraper = WebScraper()
+### PostgreSQL with pgvector
+```bash
+# Install PostgreSQL and pgvector
+sudo apt-get install postgresql postgresql-contrib
+sudo apt-get install postgresql-14-pgvector
 
-# Process mixed sources in one operation
-results = scraper.process_mixed_sources(
-    web_urls=[
-        "https://docs.python.org/3/tutorial/",
-        "https://fastapi.tiangolo.com/"
-    ],
-    local_files=[
-        "./docs/internal-guide.html",
-        "./docs/custom-apis.html",
-        "./docs/deployment.html"
-    ],
-    output_file="data/comprehensive_kb.json",
-    max_pages=30
-)
+# Create database and user
+sudo -u postgres psql
+CREATE DATABASE rag_database;
+CREATE USER rag_user WITH PASSWORD 'secure_password';
+GRANT ALL PRIVILEGES ON DATABASE rag_database TO rag_user;
 
-# Load into RAG system for querying
-from src.rag_system import RAGSystem
-rag = RAGSystem()
-rag.load_data("data/comprehensive_kb.json")
-
-# Query across all sources
-answer = rag.demo_query("Deployment and configuration best practices", top_k=5)
-print(answer)
+# Enable pgvector extension
+\c rag_database
+CREATE EXTENSION IF NOT EXISTS vector;
 ```
 
-### High-Performance Async Pipeline
-```python
-import asyncio
-from src.async_web_scraper import AsyncWebScraper, ScrapingConfig
-from src.rag_system import RAGSystem
+See [webapp setup scripts](webapp/backend/scripts/) for automated setup.
 
-async def build_fast_knowledge_base():
-    # Configure for maximum performance
-    config = ScrapingConfig(
-        concurrent_limit=8,
-        max_pages=100,
-        requests_per_second=12.0
-    )
+## 🤖 Ollama Setup
 
-    # Process multiple sources concurrently
-    tasks = []
+```bash
+# Install Ollama
+curl -fsSL https://ollama.ai/install.sh | sh
 
-    # Web scraping task
-    async with AsyncWebScraper(config) as scraper:
-        web_task = scraper.scrape_website_async([
-            "https://docs.python.org/3/"
-        ])
-        tasks.append(web_task)
+# Start Ollama
+ollama serve
 
-    # Local file processing task (can run in parallel)
-    local_task = AsyncWebScraper.process_local_files_fast(
-        file_paths=["./docs/guide1.html", "./docs/guide2.html"],
-        concurrent_limit=6
-    )
-    tasks.append(local_task)
-
-    # Execute all tasks concurrently
-    results = await asyncio.gather(*tasks)
-
-    print("✅ All processing completed!")
-    return results
-
-# Build knowledge base fast
-results = asyncio.run(build_fast_knowledge_base())
+# Pull models
+ollama pull mistral
+ollama pull llama2
+ollama pull codellama
 ```
 
-### Full Generation with Context
-```python
-# Generate complete answers with any website content
-answer = rag_system.rag_query(
-    query="How to install and set up the framework?",
-    top_k=5,
-    model="mistral"
-)
-print(answer)
-```
+## 📝 API Endpoints
+
+### Authentication
+- `POST /api/auth/register` - Register new user
+- `POST /api/auth/login` - Login user
+- `POST /api/auth/logout` - Logout user
+- `GET /api/auth/me` - Get current user
+
+### Documents
+- `POST /api/documents/upload` - Upload document
+- `GET /api/documents` - List documents
+- `DELETE /api/documents/{id}` - Delete document
+- `GET /api/documents/{id}/chunks` - Get document chunks
+
+### Chat
+- `WebSocket /socket.io` - Real-time chat
+- `GET /api/conversations` - List conversations
+- `POST /api/conversations` - Create conversation
+- `GET /api/conversations/{id}/messages` - Get messages
+
+### Models
+- `GET /api/models` - List available Ollama models
+- `GET /api/models/default` - Get default model
+
+## 🎨 Frontend Features
+
+- **Authentication**: Secure login/register with validation
+- **Document Upload**: Drag-and-drop with progress tracking
+- **Chat Interface**: Real-time messaging with markdown rendering
+- **Conversation Management**: Create, switch, delete conversations
+- **Model Selection**: Choose Ollama models
+- **RAG Settings**: Configure temperature, top_k, RAG mode
+- **Responsive Design**: Works on desktop and mobile
+
+## 🌐 Network Access
+
+For LAN access (other devices on your network):
+
+1. Update `webapp/backend/.env`: `HOST=0.0.0.0`
+2. Update `webapp/frontend/.env`: `REACT_APP_API_URL=http://<your-ip>:8000`
+3. Configure firewall to allow ports 3000, 8000
+
+See [NETWORK_SETUP.md](docs/NETWORK_SETUP.md) for complete guide.
 
 ## 🤝 Contributing
 
@@ -535,11 +387,24 @@ print(answer)
 
 ## 📄 License
 
-This project is open source. See the LICENSE file for details.
+This project is open source. See the [LICENSE](LICENSE) file for details.
 
 ## 🙏 Acknowledgments
 
-- Universal design works with any website or documentation
-- Enhanced with modern RAG techniques and intelligent caching
-- Integrates with Ollama for local LLM capabilities
-- Respects website policies and implements ethical web scraping
+- **FastAPI**: Modern Python web framework
+- **React**: UI library
+- **PostgreSQL**: Powerful database with vector support
+- **Ollama**: Local LLM platform
+- **Material-UI**: React component library
+- **Socket.IO**: Real-time communication
+
+## 📞 Support
+
+- 📖 **Documentation**: See [webapp/docs/](webapp/docs/)
+- 🐛 **Issues**: Report on GitHub
+- 💬 **Questions**: GitHub Discussions
+- 📧 **Contact**: Reach out to maintainers
+
+---
+
+**Note**: The `archive/old_rag_system/` folder contains the previous standalone RAG library for reference. The current production application is in `webapp/`.
