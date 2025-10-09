@@ -52,27 +52,45 @@ const theme = createTheme({
 
 // Main application pages
 const Dashboard: React.FC = () => (
-  <Box sx={{ p: 3 }}>
+  <Box sx={{ height: '100%', overflow: 'auto', p: 3 }}>
     <h1>Dashboard</h1>
     <p>Welcome to the Secure RAG System!</p>
   </Box>
 );
 
-const ChatPage: React.FC = () => {
+const ChatPage: React.FC<{ drawerOpen?: boolean }> = ({ drawerOpen = true }) => {
   const [selectedConversationId, setSelectedConversationId] = useState<string | undefined>();
 
   return (
     <Box sx={{ height: '100%', display: 'flex' }}>
       {/* Conversation Sidebar */}
-      <Box sx={{ width: 320, borderRight: 1, borderColor: 'divider' }}>
+      <Box
+        sx={{
+          width: 320,
+          height: '100%',
+          borderRight: 1,
+          borderColor: 'divider',
+          flexShrink: 0,
+          position: 'relative',
+          overflow: 'hidden',
+        }}
+      >
         <ConversationList
           onConversationSelect={setSelectedConversationId}
           selectedConversationId={selectedConversationId}
+          drawerOpen={drawerOpen}
         />
       </Box>
 
       {/* Chat Interface */}
-      <Box sx={{ flexGrow: 1 }}>
+      <Box
+        sx={{
+          flexGrow: 1,
+          height: '100%',
+          width: 0, // Force flex to calculate width
+          overflow: 'hidden',
+        }}
+      >
         <ChatInterface conversationId={selectedConversationId} />
       </Box>
     </Box>
@@ -87,7 +105,7 @@ const DocumentsPage: React.FC = () => {
   };
 
   return (
-    <Box>
+    <Box sx={{ height: '100%', overflow: 'auto' }}>
       {/* Upload Section */}
       <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
         <DocumentUpload onUploadComplete={handleUploadComplete} />
@@ -102,11 +120,13 @@ const DocumentsPage: React.FC = () => {
 };
 
 const SettingsPage: React.FC = () => (
-  <ModelSettings />
+  <Box sx={{ height: '100%', overflow: 'auto' }}>
+    <ModelSettings />
+  </Box>
 );
 
 const SecurityPage: React.FC = () => (
-  <Box sx={{ p: 3 }}>
+  <Box sx={{ height: '100%', overflow: 'auto', p: 3 }}>
     <h1>Security Dashboard</h1>
     <p>Security monitoring and validation tools will be implemented here.</p>
   </Box>
@@ -114,13 +134,14 @@ const SecurityPage: React.FC = () => (
 
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState('chat');
+  const [desktopDrawerOpen, setDesktopDrawerOpen] = useState(true);
 
   const renderCurrentPage = () => {
     switch (currentPage) {
       case 'dashboard':
         return <Dashboard />;
       case 'chat':
-        return <ChatPage />;
+        return <ChatPage drawerOpen={desktopDrawerOpen} />;
       case 'documents':
         return <DocumentsPage />;
       case 'settings':
@@ -128,7 +149,7 @@ const App: React.FC = () => {
       case 'security':
         return <SecurityPage />;
       default:
-        return <ChatPage />;
+        return <ChatPage drawerOpen={desktopDrawerOpen} />;
     }
   };
 
@@ -141,6 +162,8 @@ const App: React.FC = () => {
             <AppLayout
               currentPage={currentPage}
               onPageChange={setCurrentPage}
+              desktopDrawerOpen={desktopDrawerOpen}
+              onDesktopDrawerChange={setDesktopDrawerOpen}
             >
               {renderCurrentPage()}
             </AppLayout>

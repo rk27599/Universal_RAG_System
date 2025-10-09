@@ -44,11 +44,13 @@ import { Conversation } from '../../services/api';
 interface ConversationListProps {
   onConversationSelect: (conversationId: string) => void;
   selectedConversationId?: string;
+  drawerOpen?: boolean;
 }
 
 const ConversationList: React.FC<ConversationListProps> = ({
   onConversationSelect,
   selectedConversationId,
+  drawerOpen = true,
 }) => {
   const {
     conversations,
@@ -202,7 +204,7 @@ const ConversationList: React.FC<ConversationListProps> = ({
   };
 
   return (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
       {/* Header */}
       <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
         <Typography variant="h6" gutterBottom>
@@ -253,7 +255,7 @@ const ConversationList: React.FC<ConversationListProps> = ({
       </Box>
 
       {/* Conversation List */}
-      <Box sx={{ flexGrow: 1, overflow: 'auto' }}>
+      <Box sx={{ flexGrow: 1, overflow: 'auto', pb: 10 }}>
         {error && (
           <Alert severity="error" sx={{ m: 2 }}>
             {error}
@@ -277,20 +279,32 @@ const ConversationList: React.FC<ConversationListProps> = ({
         )}
       </Box>
 
-      {/* New Conversation FAB */}
-      <Fab
-        color="primary"
-        aria-label="new conversation"
-        onClick={() => setShowNewConversationDialog(true)}
+      {/* New Conversation FAB - Fixed at bottom */}
+      <Box
         sx={{
-          position: 'fixed',
-          bottom: 24,
-          left: { xs: 244, md: 535 },  // Moved 20-24px to the left for better spacing
-          zIndex: 1000,
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          p: 2,
+          backgroundColor: 'background.paper',
+          borderTop: 1,
+          borderColor: 'divider',
         }}
       >
-        <AddIcon />
-      </Fab>
+        <Fab
+          color="primary"
+          aria-label="new conversation"
+          onClick={() => setShowNewConversationDialog(true)}
+          variant="extended"
+          sx={{
+            width: '100%',
+          }}
+        >
+          <AddIcon sx={{ mr: 1 }} />
+          New Conversation
+        </Fab>
+      </Box>
 
       {/* New Conversation Dialog */}
       <Dialog

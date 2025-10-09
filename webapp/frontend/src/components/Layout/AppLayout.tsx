@@ -44,16 +44,28 @@ interface AppLayoutProps {
   children: React.ReactNode;
   currentPage?: string;
   onPageChange?: (page: string) => void;
+  desktopDrawerOpen?: boolean;
+  onDesktopDrawerChange?: (open: boolean) => void;
 }
 
-const AppLayout: React.FC<AppLayoutProps> = ({ children, currentPage = 'chat', onPageChange }) => {
+const AppLayout: React.FC<AppLayoutProps> = ({
+  children,
+  currentPage = 'chat',
+  onPageChange,
+  desktopDrawerOpen,
+  onDesktopDrawerChange
+}) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [internalDesktopOpen, setInternalDesktopOpen] = useState(true);
   const [userMenuAnchor, setUserMenuAnchor] = useState<null | HTMLElement>(null);
 
   const { user, logout } = useAuth();
   const { isConnected, selectedModel, availableModels } = useChat();
+
+  // Use controlled or uncontrolled state
+  const desktopOpen = desktopDrawerOpen !== undefined ? desktopDrawerOpen : internalDesktopOpen;
 
   const navigationItems = [
     { id: 'dashboard', label: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
@@ -65,6 +77,15 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, currentPage = 'chat', o
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
+  };
+
+  const handleDesktopDrawerToggle = () => {
+    const newState = !desktopOpen;
+    if (onDesktopDrawerChange) {
+      onDesktopDrawerChange(newState);
+    } else {
+      setInternalDesktopOpen(newState);
+    }
   };
 
   const handleUserMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
@@ -179,9 +200,13 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, currentPage = 'chat', o
       <AppBar
         position="fixed"
         sx={{
-          width: { md: `calc(100% - ${drawerWidth}px)` },
-          ml: { md: `${drawerWidth}px` },
+          width: { xs: '100%', md: desktopOpen ? `calc(100% - ${drawerWidth}px)` : '100%' },
+          ml: { xs: 0, md: desktopOpen ? `${drawerWidth}px` : 0 },
           zIndex: theme.zIndex.drawer + 1,
+          transition: theme.transitions.create(['width', 'margin'], {
+            easing: theme.transitions.easing.sharp,
+            duration: theme.transitions.duration.leavingScreen,
+          }),
         }}
       >
         <Toolbar>
@@ -190,7 +215,17 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, currentPage = 'chat', o
             aria-label="open drawer"
             edge="start"
             onClick={handleDrawerToggle}
-            sx={{ mr: 2, display: { md: 'none' } }}
+            sx={{ mr: 2, display: { xs: 'block', md: 'none' } }}
+          >
+            <MenuIcon />
+          </IconButton>
+
+          <IconButton
+            color="inherit"
+            aria-label="toggle drawer"
+            edge="start"
+            onClick={handleDesktopDrawerToggle}
+            sx={{ mr: 2, display: { xs: 'none', md: 'block' } }}
           >
             <MenuIcon />
           </IconButton>
@@ -258,7 +293,14 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, currentPage = 'chat', o
       {/* Drawer */}
       <Box
         component="nav"
-        sx={{ width: { md: drawerWidth }, flexShrink: { md: 0 } }}
+        sx={{
+          width: { xs: 0, md: desktopOpen ? drawerWidth : 0 },
+          flexShrink: 0,
+          transition: theme.transitions.create('width', {
+            easing: theme.transitions.easing.sharp,
+            duration: theme.transitions.duration.leavingScreen,
+          }),
+        }}
       >
         <Drawer
           variant="temporary"
@@ -274,16 +316,21 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, currentPage = 'chat', o
         >
           {drawer}
         </Drawer>
-        <Drawer
-          variant="permanent"
-          sx={{
-            display: { xs: 'none', md: 'block' },
-            '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth },
-          }}
-          open
-        >
-          {drawer}
-        </Drawer>
+        {desktopOpen && (
+          <Drawer
+            variant="permanent"
+            sx={{
+              display: { xs: 'none', md: 'block' },
+              '& .MuiDrawer-paper': {
+                boxSizing: 'border-box',
+                width: drawerWidth,
+              },
+            }}
+            open
+          >
+            {drawer}
+          </Drawer>
+        )}
       </Box>
 
       {/* Main Content */}
@@ -291,15 +338,14 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, currentPage = 'chat', o
         component="main"
         sx={{
           flexGrow: 1,
-          width: { md: `calc(100% - ${drawerWidth}px)` },
           height: '100vh',
-          overflow: 'auto',
+          overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
         }}
       >
         <Toolbar /> {/* Spacer for AppBar */}
-        <Box sx={{ flexGrow: 1 }}>
+        <Box sx={{ flexGrow: 1, height: 0, overflow: 'hidden' }}>
           {children}
         </Box>
       </Box>
