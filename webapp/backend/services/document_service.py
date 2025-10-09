@@ -18,14 +18,8 @@ import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-# Add project root to path to import from src
-# From services/document_service.py:
-# parent = services/, parent.parent = backend/, parent.parent.parent = webapp/, parent x4 = RAG/
-project_root = str(Path(__file__).parent.parent.parent.parent.resolve())
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
-
-from src.async_web_scraper import AsyncWebScraper, ScrapingConfig
+# Import AsyncWebScraper from webapp's internal utils folder
+from utils.async_web_scraper import AsyncWebScraper, ScrapingConfig
 from models.document import Document, Chunk, DocumentProcessingLog
 
 # Try to import embedding service, but make it optional
