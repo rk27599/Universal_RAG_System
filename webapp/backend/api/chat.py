@@ -271,10 +271,12 @@ async def create_conversation(
 @router.get("/conversations/{conversation_id}")
 async def get_conversation(
     conversation_id: str,
+    limit: int = 10,  # Load last 10 messages by default
+    offset: int = 0,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Get a single conversation with messages"""
+    """Get a single conversation with messages (paginated for performance)"""
     try:
         conversation = db.query(Conversation).filter(
             Conversation.id == conversation_id,
@@ -284,10 +286,18 @@ async def get_conversation(
         if not conversation:
             raise HTTPException(status_code=404, detail="Conversation not found")
 
-        # Get messages
+        # Get total message count
+        total_messages = db.query(Message).filter(
+            Message.conversation_id == conversation.id
+        ).count()
+
+        # Get messages with pagination (most recent first, then reverse)
         messages = db.query(Message).filter(
             Message.conversation_id == conversation.id
-        ).order_by(Message.created_at.asc()).all()
+        ).order_by(Message.created_at.desc()).limit(limit).offset(offset).all()
+
+        # Reverse to get chronological order
+        messages.reverse()
 
         message_list = [
             {
@@ -320,7 +330,13 @@ async def get_conversation(
             "success": True,
             "data": {
                 "conversation": conversation_data,
-                "messages": message_list
+                "messages": message_list,
+                "pagination": {
+                    "total": total_messages,
+                    "limit": limit,
+                    "offset": offset,
+                    "hasMore": offset + len(messages) < total_messages
+                }
             },
             "message": "Conversation retrieved successfully"
         }
