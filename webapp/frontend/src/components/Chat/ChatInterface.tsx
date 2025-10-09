@@ -75,7 +75,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ conversationId }) => {
   const [useRAG, setUseRAG] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const [temperature, setTemperature] = useState(0.7);
-  const [topK, setTopK] = useState(10);
+  const [topK, setTopK] = useState(15);
   const [snackbarMessage, setSnackbarMessage] = useState('');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
