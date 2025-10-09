@@ -190,3 +190,5 @@ webapp/backend/data/
 *~
 *.swp
 *.swo
+# Archive directory
+archive/
