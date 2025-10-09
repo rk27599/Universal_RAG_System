@@ -345,34 +345,39 @@ answer = rag.rag_query("question", top_k=5, model="mistral", temperature=0.3)
 
 ## 🔍 Understanding Query Results
 
-When you run `demo_query()`, you get structured results:
+When you run `demo_query()`, you get formatted text output:
 
 ```python
 result = rag.demo_query("How to create functions?", top_k=3)
 
-# Result structure:
-{
-    'query': 'How to create functions?',
-    'chunks': [
-        {
-            'content': 'To define a function in Python...',
-            'score': 0.756,  # Higher = more relevant
-            'metadata': {
-                'page_title': 'Python Functions Tutorial',
-                'section_hierarchy': ['Tutorial', 'Functions'],
-                'content_type': 'paragraph',  # or 'heading', 'code', 'list'
-                'domain': 'docs.python.org',
-                'url': 'https://docs.python.org/3/tutorial/controlflow.html'
-            }
-        }
-    ]
-}
+# demo_query() returns a formatted string with results
+# Example output:
+# ✅ Found 3 relevant chunks:
+#
+# 📄 Result 1: Python Functions Tutorial - Function Definition
+#    Domain: docs.python.org
+#    Type: paragraph
+#    Relevance: 0.756 (base: 0.680)
+#    Words: 342
+#    Preview: To define a function in Python...
+#
+# (Additional results follow...)
 
-# Access the data
-best_chunk = result['chunks'][0]
-print(f"Best match score: {best_chunk['score']:.3f}")
-print(f"From page: {best_chunk['metadata']['page_title']}")
-print(f"Content: {best_chunk['content'][:200]}...")
+print(result)  # Prints the formatted output
+```
+
+**Note:** `demo_query()` is designed for quick testing and prints formatted results. For programmatic access to structured data, use `retrieve_context()` method instead:
+
+```python
+# For structured data access:
+contexts, metadata = rag.retrieve_context("How to create functions?", top_k=3)
+
+# Access individual results
+for i, (context, meta) in enumerate(zip(contexts, metadata)):
+    score = meta.get('boosted_score', 0)
+    page_title = meta.get('page_title', 'Unknown')
+    print(f"Result {i+1}: {page_title} (score: {score:.3f})")
+    print(f"Content: {context[:200]}...")
 ```
 
 ### Interpreting Similarity Scores

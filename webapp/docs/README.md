@@ -5,8 +5,7 @@ Complete documentation for the RAG Web Application.
 ## 📖 Quick Navigation
 
 ### 🚀 Deployment
-- **[Deployment Guide (Docker)](DEPLOYMENT_GUIDE.md)** - Production deployment with Docker Compose
-- **[Deployment Guide (Manual)](DEPLOYMENT.md)** - Manual setup and configuration
+- **[Deployment Guide](DEPLOYMENT_GUIDE.md)** - Production deployment with Docker Compose
 
 ### 👨‍💼 Administration
 - **[Administrator Guide](ADMIN_GUIDE.md)** - System administration, monitoring, and maintenance
@@ -34,10 +33,9 @@ Complete documentation for the RAG Web Application.
 
 ## 🏗️ Web Application Stack
 
-- **Backend**: FastAPI (Python 3.12+)
-- **Frontend**: React 18 + TypeScript
+- **Backend**: FastAPI (Python 3.10+)
+- **Frontend**: React 19 + TypeScript
 - **Database**: PostgreSQL + pgvector
-- **Cache**: Redis
 - **AI**: Ollama (Local LLMs)
 - **Deployment**: Docker + Docker Compose
 

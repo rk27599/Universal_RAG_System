@@ -42,8 +42,8 @@ python examples/advanced_usage.py
 # Performance benchmarking
 python examples/benchmarking.py
 
-# Quick test with any URL
-python test_generic_system.py
+# Interactive demo with any website
+python examples/generic_usage.py
 ```
 
 ### Local File Processing

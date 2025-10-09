@@ -175,6 +175,11 @@ webapp/frontend/dist/
 webapp/frontend/.env.local
 webapp/frontend/.env.*.local
 
+# Root-level Node.js files (should not exist at project root)
+/node_modules/
+/package.json
+/package-lock.json
+
 # WebApp backend
 webapp/backend/venv/
 webapp/backend/.env

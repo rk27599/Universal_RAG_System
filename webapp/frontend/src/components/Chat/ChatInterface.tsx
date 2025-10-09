@@ -46,6 +46,10 @@ import {
 import { useChat } from '../../contexts/ChatContext';
 import { ChatMessage, DocumentSource } from '../../services/api';
 import config from '../../config/config';
+import ReactMarkdown from 'react-markdown';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import remarkGfm from 'remark-gfm'; 
 
 interface ChatInterfaceProps {
   conversationId?: string;
@@ -186,19 +190,81 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ conversationId }) => {
                   {formatTimestamp(message.timestamp)}
                 </Typography>
               </Box>
-
               {/* Message Content */}
-              <Typography
-                variant="body1"
+              <Box
                 sx={{
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                  lineHeight: 1.5,
+                  '& p': { mb: 1 },
+                  '& ul, & ol': { pl: 2, mb: 1 },
+                  '& li': { mb: 0.5 },
+                  '& h1, & h2, & h3, & h4, & h5, & h6': { 
+                    fontWeight: 'bold', 
+                    mt: 2, 
+                    mb: 1,
+                    '&:first-of-type': { mt: 0 }
+                  },
+                  '& table': {
+                    borderCollapse: 'collapse',
+                    width: '100%',
+                    mb: 2,
+                    border: '1px solid',
+                    borderColor: 'divider'
+                  },
+                  '& th, & td': {
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    p: 1,
+                    textAlign: 'left'
+                  },
+                  '& th': {
+                    backgroundColor: 'grey.100',
+                    fontWeight: 'bold'
+                  },
+                  '& code': {
+                    backgroundColor: isUser ? 'rgba(255,255,255,0.1)' : 'grey.100',
+                    px: 0.5,
+                    py: 0.25,
+                    borderRadius: 0.5,
+                    fontSize: '0.9em',
+                    fontFamily: 'monospace'
+                  }
                 }}
               >
-                {message.content}
-              </Typography>
-
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}  // This enables table support!
+                  components={{
+                    code: ({ node, className, children, ...props }: any) => {
+                      const match = /language-(\w+)/.exec(className || '');
+                      const isInline = !className;
+                      
+                      return !isInline && match ? (
+                        <SyntaxHighlighter
+                          style={oneDark}
+                          language={match[1]}
+                          PreTag="div"
+                          customStyle={{
+                            margin: '1em 0',
+                            borderRadius: '4px'
+                          }}
+                        >
+                          {String(children).replace(/\n$/, '')}
+                        </SyntaxHighlighter>
+                      ) : (
+                        <code className={className} style={{ 
+                          backgroundColor: isUser ? 'rgba(255,255,255,0.1)' : '#f5f5f5',
+                          padding: '2px 4px',
+                          borderRadius: '3px',
+                          fontSize: '0.9em',
+                          fontFamily: 'monospace'
+                        }}>
+                          {children}
+                        </code>
+                      );
+                    }
+                  }}
+                >
+                  {message.content}
+                </ReactMarkdown>
+              </Box>
               {/* Message Metadata */}
               {message.metadata && (
                 <Box sx={{ mt: 1, display: 'flex', gap: 1, flexWrap: 'wrap' }}>

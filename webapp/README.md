@@ -63,7 +63,7 @@ See [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) for details.
 ## 🛠️ Technology Stack
 
 **Backend:**
-- FastAPI (Python 3.12+)
+- FastAPI (Python 3.10+)
 - PostgreSQL / SQLite
 - Ollama (Local LLM)
 - SQLAlchemy ORM
@@ -73,7 +73,6 @@ See [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) for details.
 - React 19 + TypeScript
 - Material-UI (MUI)
 - Axios (HTTP client)
-- WebSocket support
 - React Router
 
 **Infrastructure:**
@@ -130,7 +129,6 @@ Located in `backend/` directory:
 - Document processing service (`services/document_service.py`)
 - Ollama integration (`services/ollama_service.py`)
 - Database management (`models/`, `core/database.py`)
-- RAG system integration (`services/rag_service.py`)
 
 ### Frontend (React + TypeScript)
 Located in `frontend/` directory:
@@ -234,7 +232,7 @@ Install hooks:
 ---
 
 **Version**: 1.0.0
-**Last Updated**: January 2025
+**Last Updated**: October 2025
 **License**: See [../LICENSE](../LICENSE)
 
 **Note**: This is the optional web application. For the core RAG library (Python-only), see [../README.md](../README.md).
