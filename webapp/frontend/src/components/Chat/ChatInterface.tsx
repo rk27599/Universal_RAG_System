@@ -161,7 +161,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ conversationId }) => {
     }
 
     return (
-      <Fade key={message.id} in timeout={300} style={{ transitionDelay: `${index * 100}ms` }}>
+      <Fade key={message.id} in timeout={200}>
         <Box
           sx={{
             display: 'flex',
