@@ -234,8 +234,14 @@ class ApiService {
     return response.data;
   }
 
-  async getConversation(id: string): Promise<ApiResponse<{ conversation: Conversation; messages: ChatMessage[] }>> {
-    const response = await this.client.get(`/api/chat/conversations/${id}`);
+  async getConversation(
+    id: string,
+    limit: number = 10,
+    offset: number = 0
+  ): Promise<ApiResponse<{ conversation: Conversation; messages: ChatMessage[]; pagination: { total: number; limit: number; offset: number; hasMore: boolean } }>> {
+    const response = await this.client.get(`/api/chat/conversations/${id}`, {
+      params: { limit, offset }
+    });
     return response.data;
   }
 

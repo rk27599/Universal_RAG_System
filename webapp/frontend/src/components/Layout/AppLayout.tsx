@@ -177,16 +177,10 @@ const AppLayout: React.FC<AppLayoutProps> = ({
         </List>
       </Box>
 
-      {/* Security Badge */}
+      {/* By Rohan */}
       <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <SecurityIcon fontSize="small" color="success" />
-          <Typography variant="caption" color="success.main">
-            100% Local Processing
-          </Typography>
-        </Box>
         <Typography variant="caption" color="text.secondary" display="block">
-          No external connections
+          By Rohan
         </Typography>
       </Box>
     </Box>

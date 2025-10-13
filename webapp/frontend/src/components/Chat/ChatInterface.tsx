@@ -33,6 +33,7 @@ import {
 } from '@mui/material';
 import {
   Send as SendIcon,
+  Stop as StopIcon,
   Refresh as RefreshIcon,
   ThumbUp,
   ThumbDown,
@@ -64,22 +65,28 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ conversationId }) => {
     error,
     selectedModel,
     availableModels,
+    hasMoreMessages,
+    totalMessages,
     sendMessage,
     regenerateMessage,
     rateMessage,
+    loadMoreMessages,
+    stopGeneration,
     setSelectedModel,
     clearError,
   } = useChat();
 
   const [messageInput, setMessageInput] = useState('');
   const [useRAG, setUseRAG] = useState(true);
-  const [showSettings, setShowSettings] = useState(false);
+  const [showSettings, setShowSettings] = useState(true);
   const [temperature, setTemperature] = useState(0.7);
   const [topK, setTopK] = useState(15);
   const [snackbarMessage, setSnackbarMessage] = useState('');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -90,6 +97,40 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ conversationId }) => {
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // Infinite scroll - load more messages when scrolling to top
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = async () => {
+      // Check if scrolled to top (with 100px threshold)
+      if (container.scrollTop < 100 && hasMoreMessages && !isLoadingMore && !isLoading) {
+        setIsLoadingMore(true);
+
+        // Store scroll position relative to bottom
+        const scrollHeightBefore = container.scrollHeight;
+        const scrollTopBefore = container.scrollTop;
+
+        const success = await loadMoreMessages();
+
+        if (success) {
+          // Use requestAnimationFrame for smooth scroll position update
+          requestAnimationFrame(() => {
+            const scrollHeightAfter = container.scrollHeight;
+            const heightDifference = scrollHeightAfter - scrollHeightBefore;
+            // Maintain scroll position by adding the height of new content
+            container.scrollTop = scrollTopBefore + heightDifference;
+          });
+        }
+
+        setIsLoadingMore(false);
+      }
+    };
+
+    container.addEventListener('scroll', handleScroll);
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [hasMoreMessages, isLoadingMore, isLoading, loadMoreMessages]);
 
   const handleSendMessage = async () => {
     if (!messageInput.trim() || isLoading) return;
@@ -509,13 +550,35 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ conversationId }) => {
 
       {/* Messages Area */}
       <Box
+        ref={messagesContainerRef}
         sx={{
           flexGrow: 1,
           overflow: 'auto',
           p: 2,
           backgroundColor: 'grey.50',
+          minHeight: '300px',
+          position: 'relative',
         }}
       >
+        {/* Loading More Indicator */}
+        {isLoadingMore && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+            <CircularProgress size={24} />
+            <Typography variant="caption" sx={{ ml: 1, color: 'text.secondary' }}>
+              Loading older messages...
+            </Typography>
+          </Box>
+        )}
+
+        {/* Has More Messages Indicator */}
+        {hasMoreMessages && !isLoadingMore && messages.length > 0 && totalMessages > messages.length && (
+          <Box sx={{ textAlign: 'center', py: 1 }}>
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              Scroll up to load more ({messages.length}/{totalMessages} messages)
+            </Typography>
+          </Box>
+        )}
+
         {messages.length === 0 ? (
           <Box
             sx={{
@@ -584,22 +647,28 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ conversationId }) => {
           />
 
           <IconButton
-            color="primary"
-            onClick={handleSendMessage}
-            disabled={!messageInput.trim() || isLoading}
+            color={isTyping ? 'error' : 'primary'}
+            onClick={isTyping ? stopGeneration : handleSendMessage}
+            disabled={!isTyping && (!messageInput.trim() || isLoading)}
             sx={{
               p: 1.5,
-              backgroundColor: 'primary.main',
+              backgroundColor: isTyping ? 'error.main' : 'primary.main',
               color: 'white',
               '&:hover': {
-                backgroundColor: 'primary.dark',
+                backgroundColor: isTyping ? 'error.dark' : 'primary.dark',
               },
               '&:disabled': {
                 backgroundColor: 'grey.300',
               },
             }}
           >
-            {isLoading ? <CircularProgress size={20} color="inherit" /> : <SendIcon />}
+            {isLoading ? (
+              <CircularProgress size={20} color="inherit" />
+            ) : isTyping ? (
+              <StopIcon />
+            ) : (
+              <SendIcon />
+            )}
           </IconButton>
         </Box>
       </Paper>

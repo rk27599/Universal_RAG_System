@@ -18,6 +18,8 @@ interface ChatState {
   error: string | null;
   availableModels: string[];
   selectedModel: string;
+  hasMoreMessages: boolean;
+  totalMessages: number;
 }
 
 interface ChatContextType extends ChatState {
@@ -30,6 +32,8 @@ interface ChatContextType extends ChatState {
   sendMessage: (content: string, options?: SendMessageOptions) => Promise<boolean>;
   regenerateMessage: (messageId: string) => Promise<boolean>;
   rateMessage: (messageId: string, rating: number, feedback?: string) => Promise<boolean>;
+  loadMoreMessages: () => Promise<boolean>;
+  stopGeneration: () => void;
 
   // Model management
   setSelectedModel: (model: string) => void;
@@ -59,10 +63,12 @@ type ChatAction =
   | { type: 'REMOVE_CONVERSATION'; payload: string }
   | { type: 'SET_CURRENT_CONVERSATION'; payload: Conversation | null }
   | { type: 'SET_MESSAGES'; payload: ChatMessage[] }
+  | { type: 'PREPEND_MESSAGES'; payload: ChatMessage[] }
   | { type: 'ADD_MESSAGE'; payload: ChatMessage }
   | { type: 'UPDATE_MESSAGE'; payload: { messageId: string; updates: Partial<ChatMessage> } }
   | { type: 'SET_MODELS'; payload: string[] }
   | { type: 'SET_SELECTED_MODEL'; payload: string }
+  | { type: 'SET_PAGINATION'; payload: { hasMore: boolean; total: number } }
   | { type: 'CLEAR_MESSAGES' }
   | { type: 'RESET_STATE' };
 
@@ -76,6 +82,8 @@ const initialState: ChatState = {
   error: null,
   availableModels: config.models.availableModels,
   selectedModel: config.models.defaultModel,
+  hasMoreMessages: false,
+  totalMessages: 0,
 };
 
 const chatReducer = (state: ChatState, action: ChatAction): ChatState => {
@@ -115,6 +123,12 @@ const chatReducer = (state: ChatState, action: ChatAction): ChatState => {
     case 'SET_MESSAGES':
       return { ...state, messages: action.payload };
 
+    case 'PREPEND_MESSAGES':
+      return {
+        ...state,
+        messages: [...action.payload, ...state.messages],
+      };
+
     case 'ADD_MESSAGE':
       return {
         ...state,
@@ -137,8 +151,15 @@ const chatReducer = (state: ChatState, action: ChatAction): ChatState => {
     case 'SET_SELECTED_MODEL':
       return { ...state, selectedModel: action.payload };
 
+    case 'SET_PAGINATION':
+      return {
+        ...state,
+        hasMoreMessages: action.payload.hasMore,
+        totalMessages: action.payload.total,
+      };
+
     case 'CLEAR_MESSAGES':
-      return { ...state, messages: [] };
+      return { ...state, messages: [], hasMoreMessages: false, totalMessages: 0 };
 
     case 'RESET_STATE':
       return initialState;
@@ -338,8 +359,21 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
 
         // Load available models
         const modelsResponse = await apiService.getAvailableModels();
-        if (modelsResponse.success) {
+        if (modelsResponse.success && modelsResponse.data.length > 0) {
           dispatch({ type: 'SET_MODELS', payload: modelsResponse.data });
+
+          // Auto-select first model if default "gpt-oss:latest" is not available
+          const preferredModel = 'gpt-oss:latest';
+          const isPreferredModelAvailable = modelsResponse.data.includes(preferredModel);
+
+          if (!isPreferredModelAvailable && modelsResponse.data.length > 0) {
+            const firstAvailableModel = modelsResponse.data[0];
+            dispatch({ type: 'SET_SELECTED_MODEL', payload: firstAvailableModel });
+            console.log(`🤖 Preferred model "${preferredModel}" not found. Auto-selected: ${firstAvailableModel}`);
+          } else if (isPreferredModelAvailable) {
+            dispatch({ type: 'SET_SELECTED_MODEL', payload: preferredModel });
+            console.log(`🤖 Using preferred model: ${preferredModel}`);
+          }
         }
       } catch (error: any) {
         console.error('Failed to load initial data:', error);
@@ -380,10 +414,17 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     try {
       dispatch({ type: 'SET_LOADING', payload: true });
 
-      const response = await apiService.getConversation(conversationId);
+      const response = await apiService.getConversation(conversationId, 10, 0);
       if (response.success) {
         dispatch({ type: 'SET_CURRENT_CONVERSATION', payload: response.data.conversation });
         dispatch({ type: 'SET_MESSAGES', payload: response.data.messages });
+        dispatch({
+          type: 'SET_PAGINATION',
+          payload: {
+            hasMore: response.data.pagination.hasMore,
+            total: response.data.pagination.total,
+          },
+        });
 
         // Join conversation room for real-time updates
         if (socketRef.current) {
@@ -412,6 +453,37 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     } catch (error: any) {
       dispatch({ type: 'SET_ERROR', payload: 'Failed to delete conversation' });
       return false;
+    }
+  };
+
+  const loadMoreMessages = async (): Promise<boolean> => {
+    if (!state.currentConversation || !state.hasMoreMessages || state.isLoading) {
+      return false;
+    }
+
+    try {
+      dispatch({ type: 'SET_LOADING', payload: true });
+
+      const offset = state.messages.length;
+      const response = await apiService.getConversation(state.currentConversation.id, 10, offset);
+
+      if (response.success && response.data.messages.length > 0) {
+        dispatch({ type: 'PREPEND_MESSAGES', payload: response.data.messages });
+        dispatch({
+          type: 'SET_PAGINATION',
+          payload: {
+            hasMore: response.data.pagination.hasMore,
+            total: response.data.pagination.total,
+          },
+        });
+        return true;
+      }
+      return false;
+    } catch (error: any) {
+      dispatch({ type: 'SET_ERROR', payload: 'Failed to load more messages' });
+      return false;
+    } finally {
+      dispatch({ type: 'SET_LOADING', payload: false });
     }
   };
 
@@ -524,6 +596,23 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     }
   };
 
+  const stopGeneration = (): void => {
+    if (!state.currentConversation || !socketRef.current) {
+      console.log('⚠️ Cannot stop: no conversation or socket');
+      return;
+    }
+
+    // Emit stop event to backend FIRST (before changing isTyping)
+    console.log('🛑 Emitting stop_generation event...');
+    socketRef.current.emit('stop_generation', {
+      conversationId: state.currentConversation.id,
+    });
+
+    // Then immediately stop typing indicator
+    dispatch({ type: 'SET_TYPING', payload: false });
+    console.log('🛑 Generation stopped by user');
+  };
+
   const clearError = (): void => {
     dispatch({ type: 'SET_ERROR', payload: null });
   };
@@ -540,6 +629,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     sendMessage,
     regenerateMessage,
     rateMessage,
+    loadMoreMessages,
+    stopGeneration,
     setSelectedModel,
     refreshModels,
     clearError,

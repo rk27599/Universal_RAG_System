@@ -323,6 +323,12 @@ const ConversationList: React.FC<ConversationListProps> = ({
             variant="outlined"
             value={newConversationTitle}
             onChange={(e) => setNewConversationTitle(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !isLoading) {
+                e.preventDefault();
+                handleCreateConversation();
+              }
+            }}
             placeholder="Enter a title or leave blank for auto-generation"
             sx={{ mt: 1 }}
           />

@@ -481,6 +481,9 @@ async def rate_message(
 # Store connected clients with their auth info
 connected_clients = {}
 
+# Track cancellation flags for message generation per session
+cancellation_flags = {}
+
 
 def verify_token(token: str) -> Optional[dict]:
     """Verify JWT token and return user data"""
@@ -528,6 +531,34 @@ async def disconnect(sid):
         username = connected_clients[sid].get('username', 'unknown')
         print(f"👋 WebSocket disconnected: {username} (sid: {sid})")
         del connected_clients[sid]
+
+    # Clean up cancellation flag
+    if sid in cancellation_flags:
+        del cancellation_flags[sid]
+
+
+@sio.event
+async def stop_generation(sid, data):
+    """Handle request to stop message generation"""
+    if sid not in connected_clients:
+        return
+
+    try:
+        conversation_id = data.get('conversationId')
+        username = connected_clients[sid].get('username', 'unknown')
+
+        # Set cancellation flag
+        cancellation_flags[sid] = True
+
+        # Stop typing indicator immediately
+        await sio.emit('typing_stop', {}, room=sid)
+
+        logger.info(f"🛑 Generation stopped by {username} for conversation {conversation_id}")
+        print(f"🛑 Generation stopped by {username} (sid: {sid})")
+
+    except Exception as e:
+        logger.error(f"Error stopping generation: {e}")
+        print(f"❌ Error stopping generation for {sid}: {e}")
 
 
 @sio.event
@@ -668,6 +699,9 @@ async def send_message(sid, data):
 
             final_context = "\n\n=====\n\n".join(full_context_parts) if full_context_parts else None
 
+            # Clear any previous cancellation flag
+            cancellation_flags[sid] = False
+
             # Start typing indicator
             await sio.emit('typing', {}, room=sid)
 
@@ -675,6 +709,7 @@ async def send_message(sid, data):
             start_time = datetime.now()
             ollama_service = OllamaService()
             full_response = ""
+            was_cancelled = False
 
             async for chunk in ollama_service.generate_stream(
                 prompt=content,
@@ -683,6 +718,12 @@ async def send_message(sid, data):
                 max_tokens=max_tokens,
                 context=final_context
             ):
+                # Check for cancellation
+                if cancellation_flags.get(sid, False):
+                    was_cancelled = True
+                    print(f"🛑 Generation cancelled mid-stream for {connected_clients[sid]['username']}")
+                    break
+
                 if chunk:
                     full_response += chunk
                     # Send incremental updates
@@ -693,8 +734,16 @@ async def send_message(sid, data):
             end_time = datetime.now()
             response_time = (end_time - start_time).total_seconds()
 
+            # Clear cancellation flag
+            cancellation_flags[sid] = False
+
             # Stop typing indicator
             await sio.emit('typing_stop', {}, room=sid)
+
+            # If cancelled and no content, don't save message
+            if was_cancelled and not full_response.strip():
+                print(f"⚠️ Generation cancelled before any content - no message saved")
+                return
 
             # Calculate average similarity from actual sources (not hardcoded)
             avg_similarity = None
