@@ -54,7 +54,7 @@ const theme = createTheme({
 const Dashboard: React.FC = () => (
   <Box sx={{ height: '100%', overflow: 'auto', p: 3 }}>
     <h1>Dashboard</h1>
-    <p>Welcome to the Secure RAG System!</p>
+    <p>Welcome to the Local RAG System by Rohan !</p>
   </Box>
 );
 

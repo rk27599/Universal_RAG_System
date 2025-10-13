@@ -72,7 +72,7 @@ def create_sample_conversation(db: Session, user: User):
     welcome_msg = Message(
         conversation_id=sample_conv.id,
         role="system",
-        content="Welcome to the Secure RAG System! This is a sample conversation to get you started."
+        content="Welcome to the Local RAG System by Rohan ! This is a sample conversation to get you started."
     )
     db.add(welcome_msg)
 
