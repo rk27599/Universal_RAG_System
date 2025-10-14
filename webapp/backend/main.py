@@ -80,17 +80,21 @@ from api.chat import sio
 # Security middleware configuration
 security = HTTPBearer()
 
-# CORS configuration - restrictive for security
+# CORS configuration - configured for network access
+# For LAN access: Update allowed origins to include your server's IP from NETWORK_SETUP.md
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",  # React dev server
+        "http://localhost:3000",      # React dev server (local)
         "http://127.0.0.1:3000",
-        "https://localhost",      # Production HTTPS
+        "http://localhost:8000",      # Backend (local)
+        "http://127.0.0.1:8000",
+        "https://localhost",          # Production HTTPS (local)
         "https://127.0.0.1",
+        "*"                          # Allow all origins (for LAN access - configure specific IPs in production)
     ],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
     expose_headers=["*"]
 )
@@ -150,10 +154,12 @@ async def readiness_check():
     """Readiness check for load balancers"""
     from core.database import check_database_connection
     from services.ollama_service import check_ollama_connection
+    from services.redis_service import check_redis_connection
 
     checks = {
         "database": await check_database_connection(),
         "ollama": await check_ollama_connection(),
+        "redis": await check_redis_connection(settings.REDIS_URL) if settings.REDIS_ENABLED else True,
         "storage": os.path.exists(settings.UPLOAD_DIR)
     }
 
@@ -163,7 +169,8 @@ async def readiness_check():
     return {
         "status": "ready" if all_ready else "not_ready",
         "checks": checks,
-        "security_validated": True
+        "security_validated": True,
+        "multi_worker_support": checks.get("redis", False)
     }
 
 # Root endpoint serves React app

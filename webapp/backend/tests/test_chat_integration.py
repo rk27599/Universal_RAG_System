@@ -20,6 +20,18 @@ async def test_complete_chat_flow():
     print("🚀 Starting Comprehensive Chat Integration Test")
     print("=" * 60)
 
+    # Test 0: Redis Connection Check
+    print("\n0. Testing Redis Connection...")
+    try:
+        import redis
+        redis_client = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+        redis_client.ping()
+        print(f"   ✅ Redis Connected: Version {redis_client.info().get('redis_version', 'unknown')}")
+        print(f"   🔑 Active sessions: {len(list(redis_client.scan_iter(match='socketio:session:*')))}")
+    except Exception as e:
+        print(f"   ⚠️  Redis Not Available: {e}")
+        print(f"   ⚠️  Running in single-worker mode")
+
     # Test 1: API Health Check
     print("\n1. Testing API Health Check...")
     try:

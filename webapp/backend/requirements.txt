@@ -76,7 +76,10 @@ typer==0.9.0
 
 # WebSocket support
 websockets==12.0
-python-socketio==5.10.0
+python-socketio==5.11.0
+
+# Redis for Socket.IO session management (multi-worker support)
+redis==5.0.1
 
 # Local embedding models (sentence-transformers)
 sentence-transformers==2.2.2

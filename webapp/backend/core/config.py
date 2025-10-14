@@ -60,6 +60,19 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_FILE: str = "./logs/rag_app.log"
 
+    # Redis settings - LOCAL ONLY (for Socket.IO session management)
+    REDIS_URL: str = "redis://localhost:6379"
+    REDIS_DB: int = 0
+    REDIS_ENABLED: bool = True  # Set to False to disable Redis (single worker only)
+
+    @field_validator("REDIS_URL")
+    @classmethod
+    def validate_redis_url(cls, v):
+        """Ensure Redis is localhost only"""
+        if v and ("localhost" not in v and "127.0.0.1" not in v):
+            raise ValueError("Redis must be localhost for security compliance")
+        return v
+
     @field_validator("DATABASE_URL")
     @classmethod
     def validate_database_url(cls, v):

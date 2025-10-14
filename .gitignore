@@ -192,3 +192,10 @@ webapp/backend/data/
 *.swo
 # Archive directory
 archive/
+
+# Temporary system files
+*.deb
+*.rpm
+
+# Temporary fix scripts (already documented in main files)
+webapp/backend/fix_*.sh

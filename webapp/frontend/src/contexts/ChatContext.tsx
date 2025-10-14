@@ -205,10 +205,13 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       console.log('🔌 Connecting to WebSocket with token...');
       socketRef.current = io(config.websocket.url, {
         auth: { token },
-        transports: ['polling', 'websocket'],
+        transports: ['websocket'],  // Force WebSocket only (skip polling to avoid session conflicts)
         reconnection: true,
-        reconnectionAttempts: 5,
-        reconnectionDelay: 1000,
+        reconnectionAttempts: 10,
+        reconnectionDelay: 2000,
+        reconnectionDelayMax: 5000,
+        timeout: 10000,
+        forceNew: true,  // Force new connection (don't reuse old sessions)
       });
 
       const socket = socketRef.current;
@@ -349,11 +352,31 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         if (conversationsResponse.success) {
           dispatch({ type: 'SET_CONVERSATIONS', payload: conversationsResponse.data });
 
-          // Auto-select first conversation if available
+          // Auto-select first conversation if available and load its messages
           if (conversationsResponse.data && conversationsResponse.data.length > 0) {
             const firstConversation = conversationsResponse.data[0];
-            dispatch({ type: 'SET_CURRENT_CONVERSATION', payload: firstConversation });
-            console.log('🔄 Auto-selected first conversation:', firstConversation.id);
+            console.log('🔄 Auto-selecting first conversation:', firstConversation.id);
+
+            // Load the conversation with messages
+            const convResponse = await apiService.getConversation(firstConversation.id, 10, 0);
+            if (convResponse.success) {
+              dispatch({ type: 'SET_CURRENT_CONVERSATION', payload: convResponse.data.conversation });
+              dispatch({ type: 'SET_MESSAGES', payload: convResponse.data.messages });
+              dispatch({
+                type: 'SET_PAGINATION',
+                payload: {
+                  hasMore: convResponse.data.pagination.hasMore,
+                  total: convResponse.data.pagination.total,
+                },
+              });
+
+              // Join conversation room for real-time updates
+              if (socketRef.current) {
+                socketRef.current.emit('join_conversation', firstConversation.id);
+              }
+
+              console.log('✅ First conversation loaded with', convResponse.data.messages.length, 'messages');
+            }
           }
         }
 

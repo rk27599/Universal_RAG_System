@@ -21,15 +21,38 @@ router = APIRouter(prefix="/chat", tags=["Chat"])
 settings = Settings()
 logger = logging.getLogger(__name__)
 
+# Initialize Redis manager for Socket.IO session management (multi-worker support)
+redis_manager = None
+if settings.REDIS_ENABLED:
+    try:
+        redis_manager = socketio.AsyncRedisManager(
+            url=settings.REDIS_URL,
+            redis_options={
+                'db': settings.REDIS_DB,
+                # Note: decode_responses MUST be False for Socket.IO binary messages
+                'decode_responses': False,
+                'socket_timeout': 5,
+                'socket_connect_timeout': 5,
+                'socket_keepalive': True,
+                'health_check_interval': 30
+            }
+        )
+        logger.info(f"✅ Redis manager initialized: {settings.REDIS_URL}")
+    except Exception as e:
+        logger.warning(f"⚠️  Redis initialization failed: {e}")
+        logger.warning("⚠️  Falling back to non-Redis mode (single worker only)")
+        redis_manager = None
+
 # Create Socket.IO server for real-time communication
 sio = socketio.AsyncServer(
     async_mode='asgi',
-    cors_allowed_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000"
-    ],
+    client_manager=redis_manager,  # Use Redis for session management (supports multi-worker)
+    cors_allowed_origins="*",  # Update for network access (configure specific IPs in production)
     logger=True,
-    engineio_logger=False
+    engineio_logger=False,
+    ping_timeout=60,
+    ping_interval=25,
+    max_http_buffer_size=1000000
 )
 
 

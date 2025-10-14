@@ -310,7 +310,147 @@ netsh interface portproxy show v4tov4
 
 ---
 
-### Step 6: Get Windows Host IP (For Client Access)
+### Step 6: Redis Installation and Configuration (CRITICAL for WebSocket Stability)
+
+Redis is **required** for multi-worker support and prevents WebSocket connection/disconnection issues. Without Redis, use only 1 worker.
+
+#### 6.1 Install Redis Server
+
+**On Ubuntu/WSL:**
+```bash
+# Update package list
+sudo apt-get update
+
+# Install Redis
+sudo apt-get install -y redis-server
+
+# Verify installation
+redis-server --version
+```
+
+#### 6.2 Configure Redis for Local-Only Access
+
+**Edit Redis configuration** (security requirement):
+```bash
+sudo nano /etc/redis/redis.conf
+```
+
+**Ensure these settings:**
+```conf
+# Bind to localhost only (security)
+bind 127.0.0.1 ::1
+
+# Set password (optional but recommended)
+# requirepass your_secure_password_here
+
+# Enable persistence (optional)
+save 900 1
+save 300 10
+save 60 10000
+```
+
+#### 6.3 Start Redis Server
+
+```bash
+# Start Redis service
+sudo service redis-server start
+
+# Enable Redis to start on boot
+sudo systemctl enable redis-server
+
+# Check status
+sudo service redis-server status
+
+# Test connectivity
+redis-cli ping
+# Expected output: PONG
+```
+
+#### 6.4 Update Backend Configuration
+
+**File**: `webapp/backend/.env`
+
+**Add these lines:**
+```env
+REDIS_URL=redis://localhost:6379
+REDIS_DB=0
+REDIS_ENABLED=true
+```
+
+#### 6.5 Install Python Redis Dependencies
+
+```bash
+cd webapp/backend
+pip install redis==5.0.1 aioredis==2.0.1
+```
+
+#### 6.6 Verify Redis Integration
+
+**Run quick test:**
+```bash
+# Run Redis test script
+bash scripts/redis_test.sh
+
+# Check health status
+python scripts/redis_health.py
+
+# Run comprehensive tests
+pytest tests/test_redis_websocket.py -v
+```
+
+**Expected output:**
+```
+✅ Redis installed
+✅ Redis server is running
+✅ Redis connectivity test passed
+✅ All tests passed!
+```
+
+#### 6.7 Why Redis Fixes WebSocket Issues
+
+**Your Problem:** WebSocket constantly connects/disconnects with errors like:
+```
+ERROR:engineio.server:Invalid session UmFzeXDk6inouaRwAAAA
+INFO: connection rejected (403 Forbidden)
+```
+
+**Root Cause:** Multiple workers (workers=4 in main.py) each have separate session stores. Client connects to Worker 1, but next request goes to Worker 2 which doesn't recognize the session → 403 error → reconnect loop.
+
+**Solution:** Redis provides centralized session storage shared across all workers. All workers see the same sessions → no more 403 errors → stable connections.
+
+#### 6.8 Troubleshooting Redis
+
+**Issue: Redis not starting**
+```bash
+# Check logs
+sudo tail -f /var/log/redis/redis-server.log
+
+# Check if port is in use
+sudo netstat -tlnp | grep 6379
+
+# Restart Redis
+sudo service redis-server restart
+```
+
+**Issue: Permission denied**
+```bash
+# Fix Redis permissions
+sudo chown redis:redis /var/lib/redis
+sudo chmod 750 /var/lib/redis
+```
+
+**Issue: Connection refused**
+```bash
+# Check if Redis is listening
+redis-cli ping
+
+# Verify configuration
+redis-cli CONFIG GET bind
+```
+
+---
+
+### Step 7: Get Windows Host IP (For Client Access)
 
 Clients need your **Windows machine's IP** (not WSL2 IP).
 
@@ -593,18 +733,23 @@ Your app already has authentication! Ensure users:
 
 Before deploying to multiple users:
 
+- [ ] **Redis installed and running** (`redis-cli ping` returns PONG)
+- [ ] **Redis dependencies installed** (`pip install redis aioredis`)
+- [ ] **Redis configuration added to `.env`** (REDIS_URL, REDIS_ENABLED=true)
 - [ ] Frontend built and copied to `backend/static/`
 - [ ] Backend `.env` configured with `HOST=0.0.0.0`
 - [ ] Frontend `.env` points to server IP
-- [ ] CORS configured with allowed origins
+- [ ] CORS configured with allowed origins (updated in `main.py`)
 - [ ] Security validation updated in frontend config
 - [ ] Firewall rules configured (Linux + Windows)
 - [ ] WSL2 port forwarding configured
 - [ ] PostgreSQL running and accessible
 - [ ] Ollama running with required models
-- [ ] Health check endpoint accessible: `/api/health`
+- [ ] **Multi-worker support enabled** (workers=4 in `main.py` with Redis)
+- [ ] Health check endpoint accessible: `/api/health` shows `multi_worker_support: true`
+- [ ] **Redis health check passing** (`python scripts/redis_health.py`)
 - [ ] Tested from at least one client device
-- [ ] WebSocket connections working
+- [ ] **WebSocket connections stable** (no 403 errors, no constant reconnects)
 - [ ] File upload/download working
 - [ ] Chat with RAG working
 - [ ] User authentication working
