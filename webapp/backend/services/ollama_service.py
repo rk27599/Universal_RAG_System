@@ -7,9 +7,10 @@ import aiohttp
 import asyncio
 from typing import Optional, List, Dict, Any
 from core.config import settings
+from services.llm_base import BaseLLMService, LLMConnectionError, LLMGenerationError
 
 
-class OllamaService:
+class OllamaService(BaseLLMService):
     """Service for interacting with Ollama API"""
 
     def __init__(self):
