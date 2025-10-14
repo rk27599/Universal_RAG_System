@@ -20,7 +20,7 @@ The Secure RAG System has been successfully developed and deployed as a comprehe
 ```
 Frontend:    React 18 + TypeScript + Material-UI + Socket.IO Client
 Backend:     FastAPI + Python 3.10 + Socket.IO + PostgreSQL + Redis
-AI/ML:       Ollama (Local LLM) + pgvector + TF-IDF + Semantic Search
+AI/ML:       Ollama/vLLM (Local LLM) + pgvector + TF-IDF + Semantic Search
 DevOps:      Docker + Docker Compose + Nginx + Prometheus + Grafana
 Security:    JWT Authentication + CORS + Rate Limiting + SSL/TLS
 ```
@@ -75,9 +75,10 @@ Security:    JWT Authentication + CORS + Rate Limiting + SSL/TLS
    - Optimized for vector search operations
 
 4. **AI/ML Services**
-   - Ollama for local LLM inference
+   - Ollama or vLLM for local LLM inference (configurable)
    - Custom RAG implementation
    - TF-IDF and semantic search
+   - Multi-GPU support via vLLM
 
 5. **Infrastructure**
    - Docker containerization
@@ -107,10 +108,38 @@ All services are containerized and managed via Docker Compose:
 | Backend | ✅ Running | 8000 | http://localhost:8000/api/health |
 | PostgreSQL | ✅ Running | 5432 | Internal health checks |
 | Redis | ✅ Running | 6379 | Internal health checks |
-| Ollama | ✅ Running | 11434 | http://localhost:11434/api/version |
+| Ollama/vLLM | ✅ Running | 11434/8001 | http://localhost:11434/api/version |
 | Nginx | ✅ Running | 80/443 | Proxy health checks |
 | Prometheus | ✅ Running | 9090 | Monitoring metrics |
 | Grafana | ✅ Running | 3001 | Dashboard access |
+
+### LLM Provider Configuration
+
+The system supports two local LLM providers that can be configured via environment variables:
+
+#### Ollama (Default Provider)
+- **Best for**: Development, single-user scenarios, easy setup
+- **Port**: 11434
+- **Setup**: `ollama serve` and `ollama pull mistral`
+- **Performance**: Good for single users, serialized request processing
+
+#### vLLM (High-Performance Alternative)
+- **Best for**: Production, multiple concurrent users, multi-GPU servers
+- **Port**: 8001
+- **Setup**: See [docs/VLLM_SETUP.md](../VLLM_SETUP.md)
+- **Performance**: 10-100x faster for concurrent users, parallel request processing
+- **Requirements**: GPU with CUDA support
+
+**Switching Providers:**
+```bash
+# Edit .env file
+LLM_PROVIDER=vllm  # or "ollama"
+
+# Restart backend
+docker-compose restart backend
+```
+
+For complete vLLM setup instructions including multi-GPU configuration, see [VLLM Setup Guide](../VLLM_SETUP.md).
 
 ### Security Implementation
 

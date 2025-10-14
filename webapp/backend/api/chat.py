@@ -15,7 +15,7 @@ from core.config import Settings
 from models.user import User
 from models.conversation import Conversation, Message
 from models.document import Document
-from services.ollama_service import generate_response, OllamaService
+from services.llm_factory import LLMServiceFactory, generate_response
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 settings = Settings()
@@ -1000,12 +1000,12 @@ async def send_message(sid, data):
 
             # Stream AI response with full context (conversation + documents)
             start_time = datetime.now()
-            ollama_service = OllamaService()
+            llm_service = LLMServiceFactory.get_service()
             full_response = ""
             was_cancelled = False
 
             try:
-                async for chunk in ollama_service.generate_stream(
+                async for chunk in llm_service.generate_stream(
                     prompt=content,
                     model=model,
                     temperature=temperature,

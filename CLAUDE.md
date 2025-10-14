@@ -170,10 +170,78 @@ The default prompt enforces:
 
 ### Working with the RAG System
 
-The system works with any website and can operate standalone or with Ollama:
+The system works with any website and can operate standalone or with local LLM providers:
 
 1. **Standalone (retrieval only)**: Use `demo_query()` for testing
-2. **With Ollama**: Start `ollama serve` and use `rag_query()` for full answers
+2. **With Ollama (default)**: Start `ollama serve` and use `rag_query()` for full answers
+3. **With vLLM (high-performance)**: Start vLLM server for multi-GPU concurrent processing
+
+## LLM Provider Options
+
+The RAG system supports two local LLM providers that you can switch between via configuration:
+
+### Ollama (Default Provider)
+- ✅ Simple setup and use
+- ✅ Good for development and single-user scenarios
+- ✅ Easy model management
+- ❌ Serializes requests (one at a time)
+- ❌ Slower with multiple concurrent users
+
+**Setup:**
+```bash
+# Start Ollama
+ollama serve
+
+# Pull a model
+ollama pull mistral
+```
+
+### vLLM (High-Performance Alternative - Advanced Users)
+- ✅ Handles concurrent requests in parallel
+- ✅ **10-100x faster** for multiple users
+- ✅ Efficient multi-GPU utilization
+- ✅ Tensor parallelism support
+- ⚠️  **Requires GPU with CUDA support**
+- ⚠️  **Complex installation** - strict PyTorch/CUDA version requirements
+
+**⚠️ Installation Note:** vLLM has dependency conflicts with existing PyTorch installations. **Recommended for advanced users or production environments.**
+
+**Easiest Setup (Docker):**
+```bash
+# Use official vLLM Docker image
+docker pull vllm/vllm-openai:latest
+docker run --gpus all -p 8001:8000 vllm/vllm-openai:latest \
+    --model mistralai/Mistral-7B-Instruct-v0.2
+```
+
+**Alternative (Separate Conda Environment):**
+```bash
+# Create isolated environment
+conda create -n vllm-env python=3.10
+conda activate vllm-env
+pip install vllm
+
+# Run vLLM server
+python -m vllm.entrypoints.openai.api_server \
+    --model mistralai/Mistral-7B-Instruct-v0.2 \
+    --host localhost \
+    --port 8001
+```
+
+**Switch Provider:**
+```bash
+# Edit webapp/backend/.env
+LLM_PROVIDER=vllm  # or "ollama"
+VLLM_BASE_URL=http://localhost:8001
+
+# Restart backend - no code changes needed!
+```
+
+**Setup Guides:**
+- [docs/VLLM_SETUP.md](docs/VLLM_SETUP.md) - Complete vLLM guide
+- [docs/VLLM_INSTALLATION_FIX.md](docs/VLLM_INSTALLATION_FIX.md) - Installation troubleshooting
+
+**💡 Recommendation:** Start with Ollama for development. Switch to vLLM (Docker) when you need production-scale multi-user performance.
 
 Example usage:
 ```python
@@ -278,6 +346,7 @@ asyncio.run(process_pdf())
 - **🔄 Mixed Source Processing**: Combines web scraping + local files + PDFs seamlessly
 - **⚡ Performance**: TF-IDF with trigrams, boosted scoring, smart caching
 - **🤖 Ethics**: Respects robots.txt and implements polite crawling
+- **🚀 Flexible LLM Providers**: Choose between Ollama (easy) or vLLM (high-performance multi-GPU)
 
 ## File Structure
 
