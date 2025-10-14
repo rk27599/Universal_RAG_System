@@ -625,7 +625,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
                 Documents
               </Typography>
               <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                <Chip size="small" label="PDF" variant="outlined" />
+                <Chip size="small" label="PDF ✨" variant="outlined" color="primary" />
                 <Chip size="small" label="Word (.doc, .docx)" variant="outlined" />
                 <Chip size="small" label="Text (.txt)" variant="outlined" />
               </Box>
@@ -646,6 +646,10 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
           <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
             Files are automatically processed and indexed for search and RAG functionality.
             Large documents are intelligently chunked to optimize retrieval performance.
+          </Typography>
+
+          <Typography variant="body2" color="primary" sx={{ mt: 1, fontWeight: 'medium' }}>
+            📄 PDF Processing: Extracts text, code blocks, images, and preserves page numbers for accurate citations.
           </Typography>
         </CardContent>
       </Card>
@@ -691,8 +695,12 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
           Supported formats: PDF, Word, HTML, Markdown, Text, JSON
         </Typography>
 
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
           Maximum file size: {(config.security.maxFileSize / 1024 / 1024).toFixed(1)}MB
+        </Typography>
+
+        <Typography variant="caption" color="primary" sx={{ display: 'block', fontWeight: 'bold' }}>
+          ✨ NEW: Full PDF support with text & image extraction!
         </Typography>
 
         <Box sx={{ mt: 2 }}>

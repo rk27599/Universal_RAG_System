@@ -69,8 +69,8 @@ class DocumentProcessingService:
                 return None, "No filename provided"
 
             file_ext = Path(file.filename).suffix.lower()
-            if file_ext not in ['.html', '.htm', '.txt', '.json', '.jsonl']:
-                return None, f"Unsupported file type: {file_ext}. Only .html, .htm, .txt, .json, and .jsonl files are supported."
+            if file_ext not in ['.html', '.htm', '.txt', '.json', '.jsonl', '.pdf']:
+                return None, f"Unsupported file type: {file_ext}. Only .html, .htm, .txt, .json, .jsonl, and .pdf files are supported."
 
             # 2. Read file content
             content = await file.read()
@@ -535,6 +535,17 @@ class DocumentProcessingService:
             if file_ext in ['.json', '.jsonl'] or (content_type and 'application/json' in content_type):
                 logger.info(f"Processing JSON/JSONL file: {file_path}")
                 return await self._parse_json_file(file_path)
+
+            # Handle PDF files with PDFProcessor
+            elif file_ext == '.pdf' or (content_type and 'application/pdf' in content_type):
+                logger.info(f"Processing PDF file: {file_path}")
+                from services.pdf_processor import PDFProcessor
+                processor = PDFProcessor()
+                # Extract document_id from file_path (e.g., "20250114_123456_file.pdf" -> use timestamp as temp ID)
+                # Since we don't have document_id yet during initial processing, we'll use a hash
+                import hashlib
+                temp_doc_id = hashlib.md5(str(file_path).encode()).hexdigest()[:8]
+                return await processor.process_pdf(file_path, temp_doc_id)
 
             # Handle plain text files with cleaning
             elif content_type and 'text/plain' in content_type:

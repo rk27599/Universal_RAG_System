@@ -150,16 +150,43 @@ async def send_message(
                 logger.error(f"Error retrieving document context: {e}")
 
         # Generate response with context
-        ai_response = await generate_response(
-            prompt=request.content,
-            model=request.model,
-            temperature=request.temperature,
-            max_tokens=request.maxTokens,
-            context=context
-        )
+        try:
+            ai_response = await generate_response(
+                prompt=request.content,
+                model=request.model,
+                temperature=request.temperature,
+                max_tokens=request.maxTokens,
+                context=context
+            )
 
-        if not ai_response:
-            ai_response = f"I received your message: '{request.content}'. (Ollama connection pending)"
+            if not ai_response:
+                ai_response = f"I received your message: '{request.content}'. (Ollama connection pending)"
+        except Exception as ollama_error:
+            # Handle Ollama errors gracefully
+            error_message = str(ollama_error)
+            logger.error(f"Ollama error: {error_message}")
+
+            # Provide user-friendly error message
+            if "more system memory" in error_message.lower():
+                raise HTTPException(
+                    status_code=503,
+                    detail=f'Model "{request.model}" requires more system memory than available. Please try a smaller model like "mistral:latest".'
+                )
+            elif "not found" in error_message.lower():
+                raise HTTPException(
+                    status_code=404,
+                    detail=f'Model "{request.model}" not found. Please select a different model.'
+                )
+            elif "timeout" in error_message.lower():
+                raise HTTPException(
+                    status_code=504,
+                    detail=f'Request timed out. The model may be too large or Ollama is not responding.'
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f'Failed to generate response: {error_message}'
+                )
 
         end_time = datetime.now()
         response_time = (end_time - start_time).total_seconds()
@@ -734,25 +761,55 @@ async def send_message(sid, data):
             full_response = ""
             was_cancelled = False
 
-            async for chunk in ollama_service.generate_stream(
-                prompt=content,
-                model=model,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                context=final_context
-            ):
-                # Check for cancellation
-                if cancellation_flags.get(sid, False):
-                    was_cancelled = True
-                    print(f"🛑 Generation cancelled mid-stream for {connected_clients[sid]['username']}")
-                    break
+            try:
+                async for chunk in ollama_service.generate_stream(
+                    prompt=content,
+                    model=model,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    context=final_context
+                ):
+                    # Check for cancellation
+                    if cancellation_flags.get(sid, False):
+                        was_cancelled = True
+                        print(f"🛑 Generation cancelled mid-stream for {connected_clients[sid]['username']}")
+                        break
 
-                if chunk:
-                    full_response += chunk
-                    # Send incremental updates
-                    await sio.emit('message_chunk', {
-                        'content': chunk
+                    if chunk:
+                        full_response += chunk
+                        # Send incremental updates
+                        await sio.emit('message_chunk', {
+                            'content': chunk
+                        }, room=sid)
+            except Exception as stream_error:
+                # Handle Ollama errors (memory issues, model not found, etc.)
+                error_message = str(stream_error)
+                logger.error(f"Ollama streaming error: {error_message}")
+
+                # Stop typing indicator
+                await sio.emit('typing_stop', {}, room=sid)
+
+                # Send user-friendly error message
+                if "more system memory" in error_message.lower():
+                    await sio.emit('error', {
+                        'message': f'Model "{model}" requires more system memory than available. Please try a smaller model like "mistral:latest".'
                     }, room=sid)
+                elif "not found" in error_message.lower():
+                    await sio.emit('error', {
+                        'message': f'Model "{model}" not found. Please select a different model.'
+                    }, room=sid)
+                elif "timeout" in error_message.lower():
+                    await sio.emit('error', {
+                        'message': f'Request timed out. The model may be too large or Ollama is not responding.'
+                    }, room=sid)
+                else:
+                    await sio.emit('error', {
+                        'message': f'Failed to generate response: {error_message}'
+                    }, room=sid)
+
+                # Clean up and return without saving incomplete message
+                cancellation_flags[sid] = False
+                return
 
             end_time = datetime.now()
             response_time = (end_time - start_time).total_seconds()

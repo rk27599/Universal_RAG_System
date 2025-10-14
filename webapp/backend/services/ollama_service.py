@@ -94,17 +94,23 @@ class OllamaService:
                 ) as response:
                     if response.status == 200:
                         data = await response.json()
+                        # Check for error in response
+                        if 'error' in data:
+                            error_msg = data['error']
+                            print(f"❌ Ollama error: {error_msg}")
+                            raise Exception(f"Ollama error: {error_msg}")
                         return data.get("response", "")
                     else:
                         error_text = await response.text()
-                        print(f"❌ Ollama generation failed: {error_text}")
-                        return None
+                        print(f"❌ Ollama generation failed ({response.status}): {error_text}")
+                        raise Exception(f"Ollama error ({response.status}): {error_text}")
         except asyncio.TimeoutError:
-            print("⏱️  Ollama request timed out")
-            return None
+            error_msg = f"Request timed out for model '{model}'. The model may be too large or Ollama is not responding."
+            print(f"⏱️  {error_msg}")
+            raise Exception(error_msg)
         except Exception as e:
             print(f"❌ Ollama generation error: {e}")
-            return None
+            raise
 
     async def generate_stream(
         self,
@@ -148,16 +154,30 @@ class OllamaService:
                                 import json
                                 try:
                                     data = json.loads(line.decode('utf-8'))
+                                    # Check for error in response
+                                    if 'error' in data:
+                                        error_msg = data['error']
+                                        print(f"❌ Ollama error: {error_msg}")
+                                        raise Exception(f"Ollama error: {error_msg}")
                                     if 'response' in data:
                                         yield data['response']
                                 except json.JSONDecodeError:
                                     continue
+                    else:
+                        # Handle HTTP error responses
+                        error_text = await response.text()
+                        print(f"❌ Ollama HTTP error ({response.status}): {error_text}")
+                        raise Exception(f"Ollama error ({response.status}): {error_text}")
+        except asyncio.TimeoutError:
+            error_msg = f"Request timed out for model '{model}'. The model may be too large or Ollama is not responding."
+            print(f"⏱️  {error_msg}")
+            raise Exception(error_msg)
         except Exception as e:
             import traceback
             error_details = traceback.format_exc()
             print(f"❌ Ollama streaming error: {e}")
             print(f"Error details: {error_details}")
-            yield None
+            raise
 
     async def pull_model(self, model_name: str) -> bool:
         """Pull a model from Ollama library"""
