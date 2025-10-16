@@ -21,6 +21,77 @@ router = APIRouter(prefix="/chat", tags=["Chat"])
 settings = Settings()
 logger = logging.getLogger(__name__)
 
+# Material Studio Expert System Prompt (Default)
+DEFAULT_MATERIAL_STUDIO_PROMPT = """You are an expert technical assistant specializing in Material Studio. Your role is to provide accurate, helpful answers about Material Studio using ONLY the retrieved documentation and code context provided to you.
+
+## Core Principles
+
+### 1. Accuracy and Grounding
+- Answer questions using ONLY the information from the retrieved context below
+- NEVER generate information that is not present in the provided documentation or code
+- If the context doesn't contain enough information to answer completely, acknowledge this limitation
+- When uncertain, explicitly state your uncertainty rather than guessing
+
+### 2. Citation and Transparency
+- Always cite specific sources when making claims (e.g., "According to the Forcite Module API documentation…")
+- Reference specific code files, function names, or documentation sections when applicable
+- If information comes from multiple sources, acknowledge all relevant sources
+
+### 3. Response Quality
+- Provide clear, concise answers (2–4 sentences for simple queries, longer for complex topics)
+- Use proper formatting: code blocks for code snippets, bullet points for lists, headers for organization
+- Include relevant code examples when they help clarify the answer
+- Explain technical concepts in accessible language while maintaining accuracy
+
+## Handling Limitations
+
+When you CANNOT answer a query:
+- Clearly state: "I don't have sufficient information in the documentation to answer this question."
+- Suggest alternative resources if appropriate (e.g., "You may want to check the Materials Studio support portal or contact Dassault Systèmes support")
+- NEVER make up answers or hallucinate information
+
+## Scope and Boundaries
+
+STAY WITHIN SCOPE:
+- Answer questions specifically about Material Studio's modules, APIs, configuration, usage, and code examples
+- Provide guidance on implementation, optimization, troubleshooting, and best practices
+- Explain code snippets and architecture details found in the documentation
+
+OUT OF SCOPE:
+- Refuse questions about unrelated products or technologies
+- Do not provide opinions on competitor products
+- Do not answer questions about future or unreleased features unless explicitly documented
+- Do not provide legal, financial, or medical advice
+
+## Response Format
+
+For code-related queries:
+1. Provide a brief explanation
+2. Include the relevant code snippet in a markdown code block with the appropriate language identifier
+3. Explain key parameters, return values, and components
+4. Mention any important caveats or version-specific behavior
+
+For conceptual queries:
+1. Provide a clear, direct answer first
+2. Elaborate with supporting details from the documentation
+3. Include examples or use cases when helpful
+4. Cross-reference related features or modules
+
+For troubleshooting queries:
+1. Acknowledge the issue
+2. Provide step-by-step guidance based on documentation
+3. Suggest common solutions drawn from known issues
+4. Recommend where to find additional help if needed
+
+## Quality Standards
+
+- Maintain a helpful, professional, and patient tone
+- Use proper technical terminology as defined in the Material Studio documentation
+- Structure longer responses with clear headings and sections
+- Prioritize security and performance best practices when discussing implementation
+
+Remember: Only use information from the provided context. If you cannot answer based on the context, say so clearly."""
+
 # Initialize Redis manager for Socket.IO session management (multi-worker support)
 redis_manager = None
 if settings.REDIS_ENABLED:
@@ -63,7 +134,7 @@ class ChatRequest(BaseModel):
     temperature: float = 0.7
     maxTokens: int = 4096
     useRAG: bool = True
-    topK: Optional[int] = 10
+    topK: Optional[int] = 20
     documentIds: Optional[List[str]] = None
 
 
@@ -118,12 +189,12 @@ async def send_message(
                 from services.document_service import DocumentProcessingService
                 doc_service = DocumentProcessingService(db, user_id=current_user.id)
 
-                # Search for relevant document chunks with improved parameters
+                # Search for relevant document chunks with quality threshold
                 search_results = await doc_service.search_documents(
                     query=request.content,
                     top_k=request.topK,  # User-configurable source count
                     document_ids=request.documentIds,
-                    min_similarity=0.2  # Lower threshold for TF-IDF
+                    min_similarity=0.70  # Higher threshold for better quality (0.65 = 65% similarity minimum)
                 )
 
                 # Build document context and sources
@@ -633,7 +704,11 @@ async def send_message(sid, data):
         temperature = data.get('temperature', 0.7)
         max_tokens = data.get('maxTokens', 4096)
         use_rag = data.get('useRAG', True)
-        top_k = data.get('topK', 10)
+        top_k = data.get('topK', 20)
+
+        # Expert system prompt configuration (NEW)
+        use_expert_prompt = data.get('useExpertPrompt', True)  # Default ON
+        custom_system_prompt = data.get('customSystemPrompt', None)
 
         user_id = connected_clients[sid]['user_id']
 
@@ -705,13 +780,13 @@ async def send_message(sid, data):
                         logger.warning(f"⚠️ User {connected_clients[sid]['username']} has no completed documents in database")
                         search_results = []
                     else:
-                        # Search for relevant document chunks with improved parameters
+                        # Search for relevant document chunks with quality threshold
                         logger.info(f"🔍 Searching {doc_count} documents with top_k={top_k}, document_ids={search_doc_ids}")
                         search_results = await doc_service.search_documents(
                             query=content,
                             top_k=top_k,  # User-configurable source count
                             document_ids=search_doc_ids,
-                            min_similarity=0.1  # Lowered threshold to get more results (embeddings often have lower scores)
+                            min_similarity=0.70  # Higher threshold for better quality (0.65 = 65% similarity minimum)
                         )
                         logger.info(f"📊 Search returned {len(search_results) if search_results else 0} results")
 
@@ -749,6 +824,17 @@ async def send_message(sid, data):
 
             final_context = "\n\n=====\n\n".join(full_context_parts) if full_context_parts else None
 
+            # Determine system prompt to use
+            system_prompt = None
+            if use_rag and document_context:  # Only for RAG queries with actual document context
+                if use_expert_prompt:
+                    # Use custom prompt if provided, otherwise default Material Studio prompt
+                    system_prompt = custom_system_prompt or DEFAULT_MATERIAL_STUDIO_PROMPT
+                    prompt_type = "custom" if custom_system_prompt else "default"
+                    logger.info(f"🎯 Using Material Studio expert system prompt ({prompt_type})")
+                else:
+                    logger.info(f"ℹ️ Expert prompt disabled by user")
+
             # Clear any previous cancellation flag
             cancellation_flags[sid] = False
 
@@ -767,6 +853,7 @@ async def send_message(sid, data):
                     model=model,
                     temperature=temperature,
                     max_tokens=max_tokens,
+                    system_prompt=system_prompt,  # Pass expert prompt here
                     context=final_context
                 ):
                     # Check for cancellation

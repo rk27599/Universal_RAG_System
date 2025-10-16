@@ -51,6 +51,8 @@ interface SendMessageOptions {
   useRAG?: boolean;
   topK?: number;
   documentIds?: string[];
+  useExpertPrompt?: boolean;  // Default true - use Material Studio expert prompt
+  customSystemPrompt?: string;  // Optional custom system prompt
 }
 
 type ChatAction =
@@ -532,6 +534,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
           conversationId: state.currentConversation.id,
           content,
           model: options?.model || state.selectedModel,
+          useExpertPrompt: options?.useExpertPrompt !== undefined ? options.useExpertPrompt : true,  // Default ON
+          customSystemPrompt: options?.customSystemPrompt || null,
           ...options,
         });
         return true;

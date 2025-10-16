@@ -1,9 +1,10 @@
 /**
  * Chat Interface - Real-time Messaging with RAG Integration
  * Secure chat interface with model selection and document context
+ * Performance optimized with React.memo and useCallback
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   Box,
   Paper,
@@ -50,7 +51,374 @@ import config from '../../config/config';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import remarkGfm from 'remark-gfm'; 
+import remarkGfm from 'remark-gfm';
+
+// ============================================================================
+// STATIC STYLES - Defined outside component for performance
+// ============================================================================
+
+const textFieldSx = {
+  '& .MuiOutlinedInput-root': {
+    borderRadius: 2,
+  },
+};
+
+const messagesContainerSx = {
+  flexGrow: 1,
+  overflow: 'auto',
+  p: 2,
+  backgroundColor: 'grey.50',
+  minHeight: '300px',
+  position: 'relative',
+};
+
+const messageContentSx = {
+  '& p': { mb: 1 },
+  '& ul, & ol': { pl: 2, mb: 1 },
+  '& li': { mb: 0.5 },
+  '& h1, & h2, & h3, & h4, & h5, & h6': {
+    fontWeight: 'bold',
+    mt: 2,
+    mb: 1,
+    '&:first-of-type': { mt: 0 }
+  },
+  '& table': {
+    borderCollapse: 'collapse',
+    width: '100%',
+    mb: 2,
+    border: '1px solid',
+    borderColor: 'divider'
+  },
+  '& th, & td': {
+    border: '1px solid',
+    borderColor: 'divider',
+    p: 1,
+    textAlign: 'left'
+  },
+  '& th': {
+    backgroundColor: 'grey.100',
+    fontWeight: 'bold'
+  },
+  '& code': {
+    px: 0.5,
+    py: 0.25,
+    borderRadius: 0.5,
+    fontSize: '0.9em',
+    fontFamily: 'monospace'
+  }
+};
+
+const sendButtonBaseSx = {
+  p: 1.5,
+  color: 'white',
+};
+
+const sendButtonDisabledSx = {
+  ...sendButtonBaseSx,
+  backgroundColor: 'grey.300',
+};
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+const formatTimestamp = (timestamp: string) => {
+  return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+};
+
+const getCardSx = (isUser: boolean) => ({
+  maxWidth: '70%',
+  backgroundColor: isUser ? 'primary.main' : 'background.paper',
+  color: isUser ? 'primary.contrastText' : 'text.primary',
+  boxShadow: 1,
+});
+
+const getSourceBoxSx = (isUser: boolean) => ({
+  mt: 1,
+  p: 1,
+  backgroundColor: isUser ? 'rgba(255,255,255,0.1)' : 'grey.50',
+  borderRadius: 1,
+});
+
+// ============================================================================
+// MEMOIZED MESSAGE COMPONENT
+// ============================================================================
+
+interface MessageCardProps {
+  message: ChatMessage;
+  selectedModel: string;
+  expandedSources: Set<string>;
+  onCopy: (content: string) => void;
+  onRegenerate: (id: string) => void;
+  onRate: (id: string, rating: number) => void;
+  onToggleSources: (id: string) => void;
+}
+
+const MessageCard = React.memo<MessageCardProps>(({
+  message,
+  selectedModel,
+  expandedSources,
+  onCopy,
+  onRegenerate,
+  onRate,
+  onToggleSources,
+}) => {
+  const isUser = message.role === 'user';
+  const isSystem = message.role === 'system';
+  const hasSources = message.metadata?.sources && message.metadata.sources.length > 0;
+
+  // Memoize markdown components
+  const markdownComponents = useMemo(() => ({
+    code: ({ node, className, children, ...props }: any) => {
+      const match = /language-(\w+)/.exec(className || '');
+      const isInline = !className;
+      const content = String(children).replace(/\n$/, '');
+
+      if (!isInline && match) {
+        return (
+          <SyntaxHighlighter
+            style={oneDark}
+            language={match[1]}
+            PreTag="div"
+            customStyle={{
+              margin: '1em 0',
+              borderRadius: '4px'
+            }}
+          >
+            {content}
+          </SyntaxHighlighter>
+        );
+      }
+
+      return (
+        <code
+          className={className}
+          style={{
+            backgroundColor: isUser ? 'rgba(255,255,255,0.1)' : '#f5f5f5',
+            padding: '2px 4px',
+            borderRadius: '3px',
+            fontSize: '0.9em',
+            fontFamily: 'monospace'
+          }}
+        >
+          {children}
+        </code>
+      );
+    }
+  }), [isUser]);
+
+  // Memoize message content box styles
+  const contentBoxSx = useMemo(() => ({
+    ...messageContentSx,
+    '& code': {
+      ...messageContentSx['& code'],
+      backgroundColor: isUser ? 'rgba(255,255,255,0.1)' : 'grey.100',
+    }
+  }), [isUser]);
+
+  if (isSystem) {
+    return (
+      <Box sx={{ mb: 2, textAlign: 'center' }}>
+        <Chip label={message.content} size="small" variant="outlined" />
+      </Box>
+    );
+  }
+
+  return (
+    <Fade in timeout={200}>
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: isUser ? 'flex-end' : 'flex-start',
+          mb: 2,
+        }}
+      >
+        <Card sx={getCardSx(isUser)}>
+          <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+            {/* Message Header */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+              <Avatar sx={{ width: 24, height: 24 }}>
+                {isUser ? <Person fontSize="small" /> : <SmartToy fontSize="small" />}
+              </Avatar>
+              <Typography variant="caption" sx={{ opacity: 0.8 }}>
+                {isUser ? 'You' : selectedModel}
+              </Typography>
+              <Typography variant="caption" sx={{ opacity: 0.6, ml: 'auto' }}>
+                {formatTimestamp(message.timestamp)}
+              </Typography>
+            </Box>
+
+            {/* Message Content */}
+            <Box sx={contentBoxSx}>
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={markdownComponents}
+              >
+                {message.content}
+              </ReactMarkdown>
+            </Box>
+
+            {/* Message Metadata */}
+            {message.metadata && (
+              <Box sx={{ mt: 1, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                {message.metadata.responseTime && (
+                  <Chip
+                    size="small"
+                    label={`${message.metadata.responseTime.toFixed(2)}s`}
+                    variant="outlined"
+                    sx={{ fontSize: '0.7rem', height: 20 }}
+                  />
+                )}
+                {message.metadata.tokenCount && (
+                  <Chip
+                    size="small"
+                    label={`${message.metadata.tokenCount} tokens`}
+                    variant="outlined"
+                    sx={{ fontSize: '0.7rem', height: 20 }}
+                  />
+                )}
+                {message.metadata.similarity && (
+                  <Chip
+                    size="small"
+                    label={`${(message.metadata.similarity * 100).toFixed(1)}% match`}
+                    variant="outlined"
+                    color="info"
+                    sx={{ fontSize: '0.7rem', height: 20 }}
+                  />
+                )}
+                {hasSources && (
+                  <Chip
+                    size="small"
+                    label={`${message.metadata!.sources!.length} source${message.metadata!.sources!.length > 1 ? 's' : ''}`}
+                    variant="outlined"
+                    color="success"
+                    sx={{ fontSize: '0.7rem', height: 20 }}
+                  />
+                )}
+              </Box>
+            )}
+
+            {/* Document Sources */}
+            {hasSources && (
+              <Box sx={{ mt: 1 }}>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 0.5,
+                    cursor: 'pointer',
+                    '&:hover': { opacity: 0.7 },
+                  }}
+                  onClick={() => onToggleSources(message.id)}
+                >
+                  <DocumentIcon sx={{ fontSize: '0.9rem', color: 'text.secondary' }} />
+                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                    {message.metadata!.sources!.length} source{message.metadata!.sources!.length > 1 ? 's' : ''}
+                  </Typography>
+                  <ExpandMoreIcon
+                    sx={{
+                      fontSize: '1rem',
+                      color: 'text.secondary',
+                      transform: expandedSources.has(message.id) ? 'rotate(180deg)' : 'rotate(0deg)',
+                      transition: 'transform 0.2s',
+                    }}
+                  />
+                </Box>
+
+                <Collapse in={expandedSources.has(message.id)}>
+                  <Box sx={getSourceBoxSx(isUser)}>
+                    <List dense disablePadding>
+                      {message.metadata!.sources!.map((source, idx) => (
+                        <React.Fragment key={source.chunkId}>
+                          {idx > 0 && <Divider sx={{ my: 0.5 }} />}
+                          <ListItem disablePadding sx={{ py: 0.5 }}>
+                            <ListItemText
+                              primary={
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                  <Typography variant="caption" sx={{ fontWeight: 'bold' }}>
+                                    {source.documentTitle}
+                                  </Typography>
+                                  <Chip
+                                    size="small"
+                                    label={`${(source.similarity * 100).toFixed(0)}%`}
+                                    color="success"
+                                    sx={{ height: 16, fontSize: '0.65rem' }}
+                                  />
+                                </Box>
+                              }
+                              secondary={
+                                <Typography variant="caption" sx={{ fontSize: '0.7rem' }}>
+                                  {source.section}
+                                </Typography>
+                              }
+                            />
+                          </ListItem>
+                        </React.Fragment>
+                      ))}
+                    </List>
+                  </Box>
+                </Collapse>
+              </Box>
+            )}
+
+            {/* Message Actions */}
+            <Box sx={{ mt: 1, display: 'flex', gap: 0.5, justifyContent: 'flex-end' }}>
+              <Tooltip title="Copy message">
+                <IconButton
+                  size="small"
+                  onClick={() => onCopy(message.content)}
+                  sx={{ color: isUser ? 'primary.contrastText' : 'text.secondary' }}
+                >
+                  <CopyIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+
+              {!isUser && (
+                <>
+                  <Tooltip title="Regenerate response">
+                    <IconButton
+                      size="small"
+                      onClick={() => onRegenerate(message.id)}
+                      sx={{ color: 'text.secondary' }}
+                    >
+                      <RefreshIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+
+                  <Tooltip title="Good response">
+                    <IconButton
+                      size="small"
+                      onClick={() => onRate(message.id, 5)}
+                      sx={{ color: 'success.main' }}
+                    >
+                      <ThumbUp fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+
+                  <Tooltip title="Poor response">
+                    <IconButton
+                      size="small"
+                      onClick={() => onRate(message.id, 1)}
+                      sx={{ color: 'error.main' }}
+                    >
+                      <ThumbDown fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </>
+              )}
+            </Box>
+          </CardContent>
+        </Card>
+      </Box>
+    </Fade>
+  );
+});
+
+MessageCard.displayName = 'MessageCard';
+
+// ============================================================================
+// MAIN COMPONENT
+// ============================================================================
 
 interface ChatInterfaceProps {
   conversationId?: string;
@@ -79,18 +447,42 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ conversationId }) => {
   const [messageInput, setMessageInput] = useState('');
   const [useRAG, setUseRAG] = useState(true);
   const [showSettings, setShowSettings] = useState(true);
-  const [temperature, setTemperature] = useState(0.7);
-  const [topK, setTopK] = useState(15);
+  const [temperature, setTemperature] = useState(0.0);
+  const [topK, setTopK] = useState(25);
   const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [expandedSources, setExpandedSources] = useState<Set<string>>(new Set());
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const userScrolledUp = useRef(false);
 
-  // Auto-scroll to bottom
+  // Use ref to store config values to reduce useCallback dependencies
+  const configRef = useRef({
+    selectedModel,
+    temperature,
+    useRAG,
+    topK,
+    maxTokens: config.models.maxTokens,
+  });
+
+  // Update config ref when values change
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    configRef.current = {
+      selectedModel,
+      temperature,
+      useRAG,
+      topK,
+      maxTokens: config.models.maxTokens,
+    };
+  }, [selectedModel, temperature, useRAG, topK]);
+
+  // Auto-scroll to bottom only if user hasn't scrolled up
+  useEffect(() => {
+    if (!userScrolledUp.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages, isTyping]);
 
   // Focus input on load
@@ -104,6 +496,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ conversationId }) => {
     if (!container) return;
 
     const handleScroll = async () => {
+      // Detect if user has scrolled up (not at bottom)
+      const isAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 50;
+      userScrolledUp.current = !isAtBottom;
+
       // Check if scrolled to top (with 100px threshold)
       if (container.scrollTop < 100 && hasMoreMessages && !isLoadingMore && !isLoading) {
         setIsLoadingMore(true);
@@ -132,51 +528,54 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ conversationId }) => {
     return () => container.removeEventListener('scroll', handleScroll);
   }, [hasMoreMessages, isLoadingMore, isLoading, loadMoreMessages]);
 
-  const handleSendMessage = async () => {
+  // ============================================================================
+  // MEMOIZED EVENT HANDLERS
+  // ============================================================================
+
+  const handleSendMessage = useCallback(async () => {
     if (!messageInput.trim() || isLoading) return;
 
     const message = messageInput.trim();
     setMessageInput('');
 
+    // Reset scroll lock when user sends a message
+    userScrolledUp.current = false;
+
+    // Get expert prompt settings from localStorage
+    const useExpertPrompt = localStorage.getItem('useExpertPrompt');
+    const customSystemPrompt = localStorage.getItem('customSystemPrompt');
+
     const success = await sendMessage(message, {
-      model: selectedModel,
-      temperature,
-      useRAG,
-      topK,
-      maxTokens: config.models.maxTokens,
+      ...configRef.current,
+      useExpertPrompt: useExpertPrompt !== null ? JSON.parse(useExpertPrompt) : true,
+      customSystemPrompt: customSystemPrompt || undefined,
     });
 
     if (!success) {
       setSnackbarMessage('Failed to send message');
     }
-  };
+  }, [messageInput, isLoading, sendMessage]);
 
-  const handleKeyPress = (event: React.KeyboardEvent) => {
+  const handleKeyPress = useCallback((event: React.KeyboardEvent) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       handleSendMessage();
     }
-  };
+  }, [handleSendMessage]);
 
-  const handleCopyMessage = (content: string) => {
+  const handleCopyMessage = useCallback((content: string) => {
     navigator.clipboard.writeText(content);
     setSnackbarMessage('Message copied to clipboard');
-  };
+  }, []);
 
-  const handleRateMessage = async (messageId: string, rating: number) => {
+  const handleRateMessage = useCallback(async (messageId: string, rating: number) => {
     const success = await rateMessage(messageId, rating);
     if (success) {
       setSnackbarMessage('Thank you for your feedback!');
     }
-  };
+  }, [rateMessage]);
 
-  const formatTimestamp = (timestamp: string) => {
-    return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
-
-  const [expandedSources, setExpandedSources] = useState<Set<string>>(new Set());
-
-  const toggleSources = (messageId: string) => {
+  const toggleSources = useCallback((messageId: string) => {
     setExpandedSources(prev => {
       const newSet = new Set(prev);
       if (newSet.has(messageId)) {
@@ -186,288 +585,58 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ conversationId }) => {
       }
       return newSet;
     });
-  };
+  }, []);
 
-  const renderMessage = (message: ChatMessage, index: number) => {
-    const isUser = message.role === 'user';
-    const isSystem = message.role === 'system';
-    const hasSources = message.metadata?.sources && message.metadata.sources.length > 0;
+  const handleRegenerateMessage = useCallback((messageId: string) => {
+    regenerateMessage(messageId);
+  }, [regenerateMessage]);
 
-    if (isSystem) {
-      return (
-        <Box key={message.id} sx={{ mb: 2, textAlign: 'center' }}>
-          <Chip label={message.content} size="small" variant="outlined" />
-        </Box>
-      );
+  const handleCloseSnackbar = useCallback(() => {
+    setSnackbarMessage('');
+  }, []);
+
+  const handleStopOrSend = useCallback(() => {
+    if (isTyping) {
+      stopGeneration();
+    } else {
+      handleSendMessage();
     }
+  }, [isTyping, stopGeneration, handleSendMessage]);
 
+  // Memoize send button sx
+  const sendButtonSx = useMemo(() => ({
+    ...sendButtonBaseSx,
+    backgroundColor: isTyping ? 'error.main' : 'primary.main',
+    '&:hover': {
+      backgroundColor: isTyping ? 'error.dark' : 'primary.dark',
+    },
+    '&:disabled': {
+      backgroundColor: 'grey.300',
+    },
+  }), [isTyping]);
+
+  // ============================================================================
+  // RENDER HELPERS
+  // ============================================================================
+
+  const renderMessage = useCallback((message: ChatMessage, index: number) => {
     return (
-      <Fade key={message.id} in timeout={200}>
-        <Box
-          sx={{
-            display: 'flex',
-            justifyContent: isUser ? 'flex-end' : 'flex-start',
-            mb: 2,
-          }}
-        >
-          <Card
-            sx={{
-              maxWidth: '70%',
-              backgroundColor: isUser ? 'primary.main' : 'background.paper',
-              color: isUser ? 'primary.contrastText' : 'text.primary',
-              boxShadow: 1,
-            }}
-          >
-            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-              {/* Message Header */}
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                <Avatar sx={{ width: 24, height: 24 }}>
-                  {isUser ? <Person fontSize="small" /> : <SmartToy fontSize="small" />}
-                </Avatar>
-                <Typography variant="caption" sx={{ opacity: 0.8 }}>
-                  {isUser ? 'You' : selectedModel}
-                </Typography>
-                <Typography variant="caption" sx={{ opacity: 0.6, ml: 'auto' }}>
-                  {formatTimestamp(message.timestamp)}
-                </Typography>
-              </Box>
-              {/* Message Content */}
-              <Box
-                sx={{
-                  '& p': { mb: 1 },
-                  '& ul, & ol': { pl: 2, mb: 1 },
-                  '& li': { mb: 0.5 },
-                  '& h1, & h2, & h3, & h4, & h5, & h6': { 
-                    fontWeight: 'bold', 
-                    mt: 2, 
-                    mb: 1,
-                    '&:first-of-type': { mt: 0 }
-                  },
-                  '& table': {
-                    borderCollapse: 'collapse',
-                    width: '100%',
-                    mb: 2,
-                    border: '1px solid',
-                    borderColor: 'divider'
-                  },
-                  '& th, & td': {
-                    border: '1px solid',
-                    borderColor: 'divider',
-                    p: 1,
-                    textAlign: 'left'
-                  },
-                  '& th': {
-                    backgroundColor: 'grey.100',
-                    fontWeight: 'bold'
-                  },
-                  '& code': {
-                    backgroundColor: isUser ? 'rgba(255,255,255,0.1)' : 'grey.100',
-                    px: 0.5,
-                    py: 0.25,
-                    borderRadius: 0.5,
-                    fontSize: '0.9em',
-                    fontFamily: 'monospace'
-                  }
-                }}
-              >
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}  // This enables table support!
-                  components={{
-                    code: ({ node, className, children, ...props }: any) => {
-                      const match = /language-(\w+)/.exec(className || '');
-                      const isInline = !className;
-                      
-                      return !isInline && match ? (
-                        <SyntaxHighlighter
-                          style={oneDark}
-                          language={match[1]}
-                          PreTag="div"
-                          customStyle={{
-                            margin: '1em 0',
-                            borderRadius: '4px'
-                          }}
-                        >
-                          {String(children).replace(/\n$/, '')}
-                        </SyntaxHighlighter>
-                      ) : (
-                        <code className={className} style={{ 
-                          backgroundColor: isUser ? 'rgba(255,255,255,0.1)' : '#f5f5f5',
-                          padding: '2px 4px',
-                          borderRadius: '3px',
-                          fontSize: '0.9em',
-                          fontFamily: 'monospace'
-                        }}>
-                          {children}
-                        </code>
-                      );
-                    }
-                  }}
-                >
-                  {message.content}
-                </ReactMarkdown>
-              </Box>
-              {/* Message Metadata */}
-              {message.metadata && (
-                <Box sx={{ mt: 1, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                  {message.metadata.responseTime && (
-                    <Chip
-                      size="small"
-                      label={`${message.metadata.responseTime.toFixed(2)}s`}
-                      variant="outlined"
-                      sx={{ fontSize: '0.7rem', height: 20 }}
-                    />
-                  )}
-                  {message.metadata.tokenCount && (
-                    <Chip
-                      size="small"
-                      label={`${message.metadata.tokenCount} tokens`}
-                      variant="outlined"
-                      sx={{ fontSize: '0.7rem', height: 20 }}
-                    />
-                  )}
-                  {message.metadata.similarity && (
-                    <Chip
-                      size="small"
-                      label={`${(message.metadata.similarity * 100).toFixed(1)}% match`}
-                      variant="outlined"
-                      color="info"
-                      sx={{ fontSize: '0.7rem', height: 20 }}
-                    />
-                  )}
-                  {hasSources && (
-                    <Chip
-                      size="small"
-                      label={`${message.metadata!.sources!.length} source${message.metadata!.sources!.length > 1 ? 's' : ''}`}
-                      variant="outlined"
-                      color="success"
-                      sx={{ fontSize: '0.7rem', height: 20 }}
-                    />
-                  )}
-                </Box>
-              )}
-
-              {/* Document Sources */}
-              {hasSources && (
-                <Box sx={{ mt: 1 }}>
-                  <Box
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 0.5,
-                      cursor: 'pointer',
-                      '&:hover': { opacity: 0.7 },
-                    }}
-                    onClick={() => toggleSources(message.id)}
-                  >
-                    <DocumentIcon sx={{ fontSize: '0.9rem', color: 'text.secondary' }} />
-                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                      {message.metadata!.sources!.length} source{message.metadata!.sources!.length > 1 ? 's' : ''}
-                    </Typography>
-                    <ExpandMoreIcon
-                      sx={{
-                        fontSize: '1rem',
-                        color: 'text.secondary',
-                        transform: expandedSources.has(message.id) ? 'rotate(180deg)' : 'rotate(0deg)',
-                        transition: 'transform 0.2s',
-                      }}
-                    />
-                  </Box>
-
-                  <Collapse in={expandedSources.has(message.id)}>
-                    <Box
-                      sx={{
-                        mt: 1,
-                        p: 1,
-                        backgroundColor: isUser ? 'rgba(255,255,255,0.1)' : 'grey.50',
-                        borderRadius: 1,
-                      }}
-                    >
-                      <List dense disablePadding>
-                        {message.metadata!.sources!.map((source, idx) => (
-                          <React.Fragment key={source.chunkId}>
-                            {idx > 0 && <Divider sx={{ my: 0.5 }} />}
-                            <ListItem disablePadding sx={{ py: 0.5 }}>
-                              <ListItemText
-                                primary={
-                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                    <Typography variant="caption" sx={{ fontWeight: 'bold' }}>
-                                      {source.documentTitle}
-                                    </Typography>
-                                    <Chip
-                                      size="small"
-                                      label={`${(source.similarity * 100).toFixed(0)}%`}
-                                      color="success"
-                                      sx={{ height: 16, fontSize: '0.65rem' }}
-                                    />
-                                  </Box>
-                                }
-                                secondary={
-                                  <Typography variant="caption" sx={{ fontSize: '0.7rem' }}>
-                                    {source.section}
-                                  </Typography>
-                                }
-                              />
-                            </ListItem>
-                          </React.Fragment>
-                        ))}
-                      </List>
-                    </Box>
-                  </Collapse>
-                </Box>
-              )}
-
-              {/* Message Actions */}
-              <Box sx={{ mt: 1, display: 'flex', gap: 0.5, justifyContent: 'flex-end' }}>
-                <Tooltip title="Copy message">
-                  <IconButton
-                    size="small"
-                    onClick={() => handleCopyMessage(message.content)}
-                    sx={{ color: isUser ? 'primary.contrastText' : 'text.secondary' }}
-                  >
-                    <CopyIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-
-                {!isUser && (
-                  <>
-                    <Tooltip title="Regenerate response">
-                      <IconButton
-                        size="small"
-                        onClick={() => regenerateMessage(message.id)}
-                        sx={{ color: 'text.secondary' }}
-                      >
-                        <RefreshIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-
-                    <Tooltip title="Good response">
-                      <IconButton
-                        size="small"
-                        onClick={() => handleRateMessage(message.id, 5)}
-                        sx={{ color: 'success.main' }}
-                      >
-                        <ThumbUp fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-
-                    <Tooltip title="Poor response">
-                      <IconButton
-                        size="small"
-                        onClick={() => handleRateMessage(message.id, 1)}
-                        sx={{ color: 'error.main' }}
-                      >
-                        <ThumbDown fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                  </>
-                )}
-              </Box>
-            </CardContent>
-          </Card>
-        </Box>
-      </Fade>
+      <MessageCard
+        key={message.id}
+        message={message}
+        selectedModel={selectedModel}
+        expandedSources={expandedSources}
+        onCopy={handleCopyMessage}
+        onRegenerate={handleRegenerateMessage}
+        onRate={handleRateMessage}
+        onToggleSources={toggleSources}
+      />
     );
-  };
+  }, [selectedModel, expandedSources, handleCopyMessage, handleRegenerateMessage, handleRateMessage, toggleSources]);
+
+  // ============================================================================
+  // RENDER
+  // ============================================================================
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -549,17 +718,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ conversationId }) => {
       </Paper>
 
       {/* Messages Area */}
-      <Box
-        ref={messagesContainerRef}
-        sx={{
-          flexGrow: 1,
-          overflow: 'auto',
-          p: 2,
-          backgroundColor: 'grey.50',
-          minHeight: '300px',
-          position: 'relative',
-        }}
-      >
+      <Box ref={messagesContainerRef} sx={messagesContainerSx}>
         {/* Loading More Indicator */}
         {isLoadingMore && (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
@@ -639,28 +798,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ conversationId }) => {
             onChange={(e) => setMessageInput(e.target.value)}
             onKeyPress={handleKeyPress}
             disabled={isLoading}
-            sx={{
-              '& .MuiOutlinedInput-root': {
-                borderRadius: 2,
-              },
-            }}
+            sx={textFieldSx}
           />
 
           <IconButton
             color={isTyping ? 'error' : 'primary'}
-            onClick={isTyping ? stopGeneration : handleSendMessage}
+            onClick={handleStopOrSend}
             disabled={!isTyping && (!messageInput.trim() || isLoading)}
-            sx={{
-              p: 1.5,
-              backgroundColor: isTyping ? 'error.main' : 'primary.main',
-              color: 'white',
-              '&:hover': {
-                backgroundColor: isTyping ? 'error.dark' : 'primary.dark',
-              },
-              '&:disabled': {
-                backgroundColor: 'grey.300',
-              },
-            }}
+            sx={sendButtonSx}
           >
             {isLoading ? (
               <CircularProgress size={20} color="inherit" />
@@ -689,10 +834,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ conversationId }) => {
       <Snackbar
         open={!!snackbarMessage}
         autoHideDuration={3000}
-        onClose={() => setSnackbarMessage('')}
+        onClose={handleCloseSnackbar}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert onClose={() => setSnackbarMessage('')} severity="success" sx={{ width: '100%' }}>
+        <Alert onClose={handleCloseSnackbar} severity="success" sx={{ width: '100%' }}>
           {snackbarMessage}
         </Alert>
       </Snackbar>

@@ -25,6 +25,8 @@ from models.document import Document, Chunk, DocumentProcessingLog
 # Try to import embedding service, but make it optional
 try:
     from services.embedding_service import get_embedding_service
+    service = get_embedding_service()
+    service.load_model()
     EMBEDDINGS_AVAILABLE = True
 except Exception as e:
     EMBEDDINGS_AVAILABLE = False
@@ -142,7 +144,7 @@ class DocumentProcessingService:
             file_path: Path to uploaded file
             chunk_size: Maximum characters per chunk (default: 2000)
         """
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         db = None
 
         try:
@@ -233,8 +235,10 @@ class DocumentProcessingService:
                     document_id=document_id,
                     content=chunk_content,
                     content_hash=chunk_hash,
-                    embedding=embedding,
-                    embedding_model=self.embedding_service.model_name if self.embedding_service else None,
+                    embedding=None,  # Old 384-dim column (deprecated)
+                    embedding_model=None,  # Old model name (deprecated)
+                    embedding_new=embedding,  # New BGE-M3 1024-dim embeddings
+                    embedding_model_new=self.embedding_service.model_name if self.embedding_service else None,
                     chunk_order=i,
                     content_type=chunk_data.get('content_type', 'text'),
                     section_hierarchy=chunk_data.get('section_hierarchy'),
@@ -266,7 +270,7 @@ class DocumentProcessingService:
 
             # Update processing log
             log.status = "completed"
-            completed_time = datetime.utcnow()
+            completed_time = datetime.now(timezone.utc)
             log.completed_at = completed_time
 
             # Handle timezone-aware vs naive datetime comparison
@@ -298,7 +302,7 @@ class DocumentProcessingService:
                     # Update processing log if it exists
                     if 'log' in locals():
                         log.status = "failed"
-                        log.completed_at = datetime.utcnow()
+                        log.completed_at = datetime.now(timezone.utc)
                         log.duration_seconds = (log.completed_at - log.started_at).total_seconds()
                         log.error_message = str(e)[:1000]  # Limit error message length
 
@@ -518,43 +522,86 @@ class DocumentProcessingService:
             return None
 
     async def _extract_content(self, file_path: Path, content_type: str) -> Optional[Dict]:
-        """
-        Extract structured content from file using AsyncWebScraper
-
-        Args:
-            file_path: Path to file
-            content_type: MIME type of file
-
-        Returns:
-            Structured document content or None
-        """
+        """Extract structured content from file using AsyncWebScraper"""
         try:
             file_ext = file_path.suffix.lower()
 
-            # Handle JSON/JSONL files with pre-extracted content
+            # Handle JSON/JSONL files
             if file_ext in ['.json', '.jsonl'] or (content_type and 'application/json' in content_type):
                 logger.info(f"Processing JSON/JSONL file: {file_path}")
                 return await self._parse_json_file(file_path)
 
             # Handle PDF files with PDFProcessor
-            elif file_ext == '.pdf' or (content_type and 'application/pdf' in content_type):
-                logger.info(f"Processing PDF file: {file_path}")
-                from services.pdf_processor import PDFProcessor
-                processor = PDFProcessor()
-                # Extract document_id from file_path (e.g., "20250114_123456_file.pdf" -> use timestamp as temp ID)
-                # Since we don't have document_id yet during initial processing, we'll use a hash
+            elif file_ext == ".pdf" or (content_type and "application/pdf" in content_type):
+                logger.info(f"📄 Processing PDF file: {file_path}")
+                
+                # Verify file exists
+                if not file_path.exists():
+                    logger.error(f"❌ PDF file not found: {file_path}")
+                    return None
+                
+                # Check if PDFProcessor can be imported
+                try:
+                    from services.pdf_processor import PDFProcessor
+                    logger.info("✅ PDFProcessor imported successfully")
+                except ImportError as e:
+                    logger.error(f"❌ Failed to import PDFProcessor: {e}")
+                    logger.error("Install PyMuPDF with: pip install PyMuPDF")
+                    return None
+                
+                # Check PyMuPDF availability
+                try:
+                    import fitz
+                    logger.info(f"✅ PyMuPDF version: {fitz.version}")
+                except ImportError:
+                    logger.error("❌ PyMuPDF (fitz) not installed")
+                    logger.error("Install with: pip install PyMuPDF")
+                    return None
+                
+                # Initialize processor
+                processor = PDFProcessor(chunk_size=1000, overlap=200)
+                
+                # Generate temp doc ID
                 import hashlib
                 temp_doc_id = hashlib.md5(str(file_path).encode()).hexdigest()[:8]
-                return await processor.process_pdf(file_path, temp_doc_id)
+                
+                logger.info(f"🚀 Starting PDF processing for {file_path.name} (temp_id: {temp_doc_id})")
+                
+                # Process PDF with detailed error handling
+                try:
+                    result = await processor.process_pdf(file_path, temp_doc_id)
 
-            # Handle plain text files with cleaning
-            elif content_type and 'text/plain' in content_type:
+                    if result:
+                        total_sections = result.get('total_sections', 0)
+                        total_pages = result.get('metadata', {}).get('total_pages', 0)
+                        image_count = result.get('metadata', {}).get('image_count', 0)
+                        table_count = result.get('metadata', {}).get('table_count', 0)
+
+                        logger.info(
+                            f"✅ PDF processed successfully: {file_path.name} | "
+                            f"{total_pages} pages → {total_sections} sections | "
+                            f"{image_count} images | {table_count} tables"
+                        )
+                        return result
+                    else:
+                        logger.error(f"❌ PDF processor returned None for {file_path.name}")
+                        logger.error("Possible causes: corrupted PDF, unsupported format, or insufficient permissions")
+                        return None
+
+                except Exception as pdf_error:
+                    logger.error(f"❌ Exception during PDF processing of {file_path.name}: {pdf_error}", exc_info=True)
+                    logger.error("Check if PDF is password-protected, corrupted, or uses unsupported features")
+                    return None
+
+            # Handle plain text files
+            elif content_type and "text/plain" in content_type:
+                logger.info(f"Processing text file: {file_path}")
                 async with aiofiles.open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                     text_content = await f.read()
 
                 # Clean UI/navigation noise from text
                 text_content = self._clean_text_content(text_content)
-
+                
                 return {
                     'page_title': file_path.name,
                     'url': f"file://{file_path}",
@@ -567,17 +614,19 @@ class DocumentProcessingService:
                         'word_count': len(text_content.split())
                     }]
                 }
-
+            
+            # Handle HTML files using AsyncWebScraper
             else:
-                # Handle HTML files using AsyncWebScraper
+                logger.info(f"Processing HTML file: {file_path}")
                 config = ScrapingConfig(concurrent_limit=1)
                 async with AsyncWebScraper(config) as scraper:
                     doc_structure = await scraper.extract_from_local_file_async(str(file_path))
                     return doc_structure
 
         except Exception as e:
-            logger.error(f"Error extracting content from {file_path}: {e}")
+            logger.error(f"❌ Error extracting content from {file_path}: {e}", exc_info=True)
             return None
+
 
     def _create_chunks(self, structured_content: Dict, max_chunk_size: int = 2000) -> List[Dict]:
         """
@@ -729,8 +778,8 @@ class DocumentProcessingService:
         self,
         query: str,
         document_ids: Optional[List[int]] = None,
-        top_k: int = 5,
-        min_similarity: float = 0.3
+        top_k: int = 20,
+        min_similarity: float = 0.70
     ) -> List[Dict]:
         """
         Fallback search using TF-IDF when embeddings are unavailable
@@ -895,7 +944,7 @@ class DocumentProcessingService:
                 },
                 "chunks": chunks_data,
                 "export_metadata": {
-                    "exported_at": datetime.utcnow().isoformat(),
+                    "exported_at": datetime.now(timezone.utc).isoformat(),
                     "total_chunks": len(chunks_data),
                     "export_version": "1.0"
                 }
@@ -1253,7 +1302,7 @@ class DocumentProcessingService:
             temp_dir: Temporary directory to clean up after processing
             chunk_size: Maximum characters per chunk (default: 2000)
         """
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
 
         try:
             # Get document from database (new session for background task)
@@ -1330,8 +1379,10 @@ class DocumentProcessingService:
                     document_id=document_id,
                     content=chunk_content,
                     content_hash=chunk_hash,
-                    embedding=embedding,
-                    embedding_model=self.embedding_service.model_name if self.embedding_service else None,
+                    embedding=None,  # Old 384-dim column (deprecated)
+                    embedding_model=None,  # Old model name (deprecated)
+                    embedding_new=embedding,  # New BGE-M3 1024-dim embeddings
+                    embedding_model_new=self.embedding_service.model_name if self.embedding_service else None,
                     chunk_order=i,
                     content_type=chunk_data.get('content_type', 'text'),
                     section_hierarchy=chunk_data.get('section_hierarchy'),
@@ -1363,7 +1414,7 @@ class DocumentProcessingService:
 
             # Update processing log
             log.status = "completed"
-            completed_time = datetime.utcnow()
+            completed_time = datetime.now(timezone.utc)
             log.completed_at = completed_time
 
             # Handle timezone-aware vs naive datetime comparison
@@ -1390,7 +1441,7 @@ class DocumentProcessingService:
 
                 # Update processing log
                 log.status = "failed"
-                log.completed_at = datetime.utcnow()
+                log.completed_at = datetime.now(timezone.utc)
                 log.duration_seconds = (log.completed_at - log.started_at).total_seconds()
                 log.error_message = str(e)
 
@@ -1413,9 +1464,9 @@ class DocumentProcessingService:
     async def search_documents(
         self,
         query: str,
-        top_k: int = 5,
+        top_k: int = 20,
         document_ids: Optional[List[int]] = None,
-        min_similarity: float = 0.3
+        min_similarity: float = 0.70
     ) -> List[Dict]:
         """
         Search documents using semantic similarity with PostgreSQL vector operations
@@ -1456,10 +1507,10 @@ class DocumentProcessingService:
             dialect_name = inspect(self.db.bind).dialect.name
 
             if dialect_name == 'postgresql':
-                # Use optimized pgvector operations
-                logger.info(f"🔍 Vector search (pgvector): dimensions={len(query_embedding)}, top_k={top_k}, min_similarity={min_similarity}")
+                # Use optimized pgvector operations with BGE-M3 embeddings (1024-dim)
+                logger.info(f"🔍 Vector search (pgvector BGE-M3): dimensions={len(query_embedding)}, top_k={top_k}, min_similarity={min_similarity}")
 
-                distance = Chunk.embedding.cosine_distance(query_embedding)
+                distance = Chunk.embedding_new.cosine_distance(query_embedding)
                 similarity = 1 - (distance / 2)
 
                 query_builder = self.db.query(
@@ -1471,7 +1522,7 @@ class DocumentProcessingService:
                 ).filter(
                     Document.user_id == self.user_id,
                     Document.processing_status == "completed",
-                    Chunk.embedding.isnot(None)
+                    Chunk.embedding_new.isnot(None)
                 )
 
                 if document_ids:
@@ -1502,15 +1553,15 @@ class DocumentProcessingService:
                 return results
 
             else:
-                # SQLite fallback - use Python-based similarity
-                logger.info(f"🔍 Vector search (Python/SQLite): dimensions={len(query_embedding)}, top_k={top_k}, min_similarity={min_similarity}")
+                # SQLite fallback - use Python-based similarity with BGE-M3 embeddings
+                logger.info(f"🔍 Vector search (Python/SQLite BGE-M3): dimensions={len(query_embedding)}, top_k={top_k}, min_similarity={min_similarity}")
 
                 query_builder = self.db.query(Chunk, Document).join(
                     Document, Chunk.document_id == Document.id
                 ).filter(
                     Document.user_id == self.user_id,
                     Document.processing_status == "completed",
-                    Chunk.embedding.isnot(None)
+                    Chunk.embedding_new.isnot(None)
                 )
 
                 if document_ids:
@@ -1525,7 +1576,7 @@ class DocumentProcessingService:
 
                 for chunk, document in all_chunks:
                     try:
-                        chunk_emb = chunk.embedding
+                        chunk_emb = chunk.embedding_new
                         if hasattr(chunk_emb, 'tolist'):
                             chunk_emb = chunk_emb.tolist()
                         elif not isinstance(chunk_emb, list):

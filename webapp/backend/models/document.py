@@ -142,8 +142,12 @@ class Chunk(BaseModel, SecurityAuditMixin):
     content_hash = Column(String(64), nullable=False)  # Hash for deduplication
 
     # Vector embedding (using pgvector)
-    embedding = Column(Vector(384), nullable=True)  # 384 dimensions for all-MiniLM-L6-v2
-    embedding_model = Column(String(100), nullable=True)  # Model used for embedding
+    embedding = Column(Vector(384), nullable=True)  # 384 dimensions for all-MiniLM-L6-v2 (old)
+    embedding_model = Column(String(100), nullable=True)  # Model used for embedding (old)
+
+    # New BGE-M3 embeddings (1024 dimensions)
+    embedding_new = Column(Vector(1024), nullable=True)  # 1024 dimensions for BAAI/bge-m3
+    embedding_model_new = Column(String(100), nullable=True)  # Model used for new embedding
 
     # Chunk metadata
     chunk_order = Column(Integer, nullable=False)  # Order within document

@@ -35,6 +35,7 @@ import {
 } from '@mui/icons-material';
 import { useChat } from '../../contexts/ChatContext';
 import apiService from '../../services/api';
+import { PromptSettings } from './PromptSettings';
 
 interface ModelInfo {
   name: string;
@@ -83,6 +84,15 @@ const ModelSettings: React.FC = () => {
   const [useRAGByDefault, setUseRAGByDefault] = useState(true);
   const [streamingEnabled, setStreamingEnabled] = useState(true);
 
+  // Expert prompt settings (NEW)
+  const [useExpertPrompt, setUseExpertPrompt] = useState(() => {
+    const saved = localStorage.getItem('useExpertPrompt');
+    return saved !== null ? JSON.parse(saved) : true; // Default ON
+  });
+  const [customSystemPrompt, setCustomSystemPrompt] = useState(() => {
+    return localStorage.getItem('customSystemPrompt') || '';
+  });
+
   // Load system status and model information
   const loadSystemStatus = async () => {
     try {
@@ -126,6 +136,15 @@ const ModelSettings: React.FC = () => {
   useEffect(() => {
     loadSystemStatus();
   }, []);
+
+  // Persist expert prompt settings to localStorage
+  useEffect(() => {
+    localStorage.setItem('useExpertPrompt', JSON.stringify(useExpertPrompt));
+  }, [useExpertPrompt]);
+
+  useEffect(() => {
+    localStorage.setItem('customSystemPrompt', customSystemPrompt);
+  }, [customSystemPrompt]);
 
   const handleRefreshModels = async () => {
     await refreshModels();
@@ -570,6 +589,16 @@ const ModelSettings: React.FC = () => {
                   </Typography>
                 </Box>
               </Box>
+
+              <Divider sx={{ my: 3 }} />
+
+              {/* Expert System Prompt Settings */}
+              <PromptSettings
+                useExpertPrompt={useExpertPrompt}
+                onUseExpertPromptChange={setUseExpertPrompt}
+                customPrompt={customSystemPrompt}
+                onCustomPromptChange={setCustomSystemPrompt}
+              />
 
               <Box sx={{ mt: 3, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                 <Button variant="contained" color="primary" onClick={handleSaveSettings}>

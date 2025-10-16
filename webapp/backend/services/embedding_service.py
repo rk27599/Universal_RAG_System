@@ -290,13 +290,39 @@ class EmbeddingService:
 
 # Global instance for reuse (singleton pattern)
 _embedding_service_instance: Optional[EmbeddingService] = None
+_bge_embedding_service_instance = None
 
 
-def get_embedding_service() -> EmbeddingService:
-    """Get or create the global embedding service instance"""
-    global _embedding_service_instance
+def get_embedding_service(use_bge_m3: bool = True):
+    """
+    Get or create the global embedding service instance
 
+    Args:
+        use_bge_m3: If True, use BGE-M3 (1024-dim). If False, use MiniLM (384-dim)
+
+    Returns:
+        EmbeddingService or BGEEmbeddingService instance
+    """
+    global _embedding_service_instance, _bge_embedding_service_instance
+
+    if use_bge_m3:
+        # Use BGE-M3 for better quality (1024 dimensions)
+        if _bge_embedding_service_instance is None:
+            try:
+                from services.embedding_service_bge import BGEEmbeddingService
+                _bge_embedding_service_instance = BGEEmbeddingService(use_fp16=True)
+                _bge_embedding_service_instance.load_model()
+                logger.info("✅ Using BGE-M3 embedding service (1024 dimensions)")
+            except Exception as e:
+                logger.warning(f"Failed to load BGE-M3, falling back to MiniLM: {e}")
+                use_bge_m3 = False
+
+        if _bge_embedding_service_instance is not None:
+            return _bge_embedding_service_instance
+
+    # Fallback to MiniLM (384 dimensions)
     if _embedding_service_instance is None:
         _embedding_service_instance = EmbeddingService()
+        logger.info("✅ Using MiniLM embedding service (384 dimensions)")
 
     return _embedding_service_instance
