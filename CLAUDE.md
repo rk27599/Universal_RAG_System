@@ -105,8 +105,11 @@ pip install FlagEmbedding==1.3.5
 # Install PDF processing dependencies
 pip install PyMuPDF pdfplumber Pillow nltk
 
-# Install all other dependencies
-pip install -r requirements.txt
+# Install dev/testing dependencies (optional)
+pip install -r webapp/requirements.txt
+
+# Install backend production dependencies
+pip install -r webapp/backend/requirements.txt
 
 # Download NLTK data for sentence tokenization
 python -c "import nltk; nltk.download('punkt_tab')"
@@ -278,41 +281,151 @@ asyncio.run(process_pdf())
 
 ## File Structure
 
+**ROOT DIRECTORY (Clean - Only Essential Files)**
 ```
-src/
-├── web_scraper.py          # Universal web scraper
-├── rag_system.py           # Complete RAG system
-└── __init__.py             # Package init
-
-webapp/backend/
-├── services/
-│   ├── pdf_processor.py    # PDF processing service
-│   ├── document_service.py # Document management service
-│   └── embedding_service.py # Embedding generation service
-├── config/
-│   ├── pdf_config.py       # PDF processor configuration
-│   └── __init__.py
-└── models/
-    └── document.py         # Database models
-
-examples/
-├── basic_usage.py          # Simple demo
-├── generic_usage.py        # Interactive multi-website demo
-├── advanced_usage.py       # Advanced features demo
-└── benchmarking.py         # Performance testing
-
-tests/
-├── test_scraper.py         # Web scraper tests
-└── test_rag_system.py      # RAG system tests
-
-data/                       # Generated data directory
-├── website_docs.json       # Structured website data
-├── website_docs.txt        # Text format for compatibility
-├── uploads/                # Uploaded files
-│   ├── images/            # Extracted PDF images
-│   └── *.pdf             # Uploaded PDF files
-└── *_cache.pkl            # Processed data caches
+/home/rkpatel/RAG/
+├── README.md            # Main project overview
+├── CLAUDE.md            # This file - Claude Code instructions
+├── LICENSE              # License file
+├── .gitignore           # Git ignore rules
+├── logs/                # Application logs (gitignored)
+├── data/                # Data files (gitignored)
+├── archive/             # Old RAG system (reference)
+├── venv/                # Python virtual environment
+└── webapp/              # 🎯 ALL APPLICATION CODE & DOCS HERE
 ```
+
+**WEBAPP DIRECTORY (All Code, Tests, Docs, Scripts)**
+```
+webapp/
+├── requirements.txt                 # Dev/testing dependencies
+├── README.md                        # Webapp overview
+├── INSTALLATION_GUIDE.md            # Setup instructions
+│
+├── tests/                           # ALL test files
+│   ├── test_enhanced_rag_e2e.py    # End-to-end RAG tests
+│   ├── test_pdf_sample.py          # PDF processing tests
+│   ├── test_phase3_integration.py  # Phase 3 integration
+│   └── validate_phases_1_2.py      # Phase 1 & 2 validation
+│
+├── backend/                         # FastAPI Backend (Python)
+│   ├── api/                        # REST API endpoints
+│   │   ├── auth.py                # Authentication
+│   │   ├── chat.py                # WebSocket chat + Redis
+│   │   ├── documents.py           # Document upload/management
+│   │   └── models.py              # Ollama model info
+│   │
+│   ├── core/                       # Core configuration
+│   │   ├── config.py              # Settings + Redis config
+│   │   ├── database.py            # SQLAlchemy setup
+│   │   └── security.py            # JWT & password hashing
+│   │
+│   ├── models/                     # Database models
+│   │   ├── user.py                # User model
+│   │   ├── document.py            # Document & Chunk (progress tracking)
+│   │   └── conversation.py        # Chat models
+│   │
+│   ├── services/                   # Business logic
+│   │   ├── document_service.py          # Document processing w/ progress
+│   │   ├── embedding_service_bge.py     # BGE-M3 embeddings (1024-dim)
+│   │   ├── pdf_processor.py             # Advanced PDF processing
+│   │   ├── enhanced_search_service.py   # 🆕 Unified enhanced RAG
+│   │   ├── reranker_service.py          # 🆕 Cross-encoder reranking
+│   │   ├── bm25_retriever.py            # 🆕 BM25 keyword search
+│   │   ├── ensemble_retriever.py        # 🆕 Hybrid search orchestration
+│   │   ├── query_expander.py            # 🆕 Multi-query generation
+│   │   ├── corrective_rag.py            # 🆕 Self-grading RAG
+│   │   ├── web_search_fallback.py       # 🆕 External knowledge fallback
+│   │   ├── document_recovery_service.py # 🆕 Document repair/recovery
+│   │   ├── rag_service.py               # RAG retrieval orchestration
+│   │   └── ollama_service.py            # LLM integration
+│   │
+│   ├── utils/                      # Utility modules
+│   │   ├── async_web_scraper.py   # HTML content extraction
+│   │   └── memory_manager.py      # 🆕 RAM/swap monitoring, adaptive batching
+│   │
+│   ├── prompts/                    # 🆕 LLM Prompt Templates
+│   │   ├── citation_template.py   # Citation-enforcing prompts
+│   │   ├── cot_template.py        # Chain-of-thought prompts
+│   │   └── extractive_template.py # Extractive QA prompts
+│   │
+│   ├── scripts/                    # Backend scripts
+│   │   ├── reembed_with_bge_m3.py # BGE-M3 migration script
+│   │   ├── setup_postgres.sh      # Database setup
+│   │   ├── redis_health.py        # Redis monitoring
+│   │   └── migrate_*.py           # Database migrations
+│   │
+│   ├── docs/                       # Backend documentation
+│   │   ├── ENHANCED_SEARCH_INTEGRATION.md  # RAG features guide
+│   │   ├── README_ENHANCED_SEARCH.md       # Enhanced search overview
+│   │   ├── TESTING_GUIDE.md                # Testing documentation
+│   │   ├── VECTOR_SEARCH_OPTIMIZATION.md   # Performance tuning
+│   │   └── redis/                          # Redis-specific docs
+│   │       ├── REDIS_DEPLOYMENT_STEPS.md
+│   │       ├── REDIS_FIX_SUMMARY.md
+│   │       └── FIX_REDIS_PUBSUB.md
+│   │
+│   ├── tests/                      # Backend tests
+│   │   └── test_enhanced_search_integration.py
+│   │
+│   ├── main.py                     # FastAPI application entry
+│   ├── init_db.py                  # Database initialization
+│   └── requirements.txt            # Backend dependencies
+│
+├── frontend/                        # React Frontend (TypeScript)
+│   ├── src/
+│   │   ├── components/             # React components
+│   │   │   ├── Auth/              # Login, Register
+│   │   │   ├── Chat/              # Chat interface
+│   │   │   ├── Documents/         # Upload, list (🆕 progress tracking)
+│   │   │   ├── Layout/            # App layout, sidebar
+│   │   │   └── Settings/          # Model settings (🆕 system prompt)
+│   │   │
+│   │   ├── contexts/               # React contexts
+│   │   │   ├── AuthContext.tsx    # Auth state
+│   │   │   └── ChatContext.tsx    # Chat state + WebSocket
+│   │   │
+│   │   ├── services/               # API services
+│   │   │   └── api.ts             # Axios API client
+│   │   │
+│   │   ├── config/                 # Configuration
+│   │   │   └── config.ts          # App settings
+│   │   │
+│   │   ├── App.tsx                 # Main app component
+│   │   └── index.tsx               # React entry point
+│   │
+│   ├── public/                     # Static assets
+│   ├── package.json                # Node dependencies
+│   └── README.md                   # Frontend documentation
+│
+├── docs/                            # 📚 ALL PROJECT DOCUMENTATION
+│   ├── README.md                   # Docs index
+│   ├── README_ROOT.md              # Root docs overview
+│   ├── BGE_M3_MIGRATION_GUIDE.md   # 🆕 BGE-M3 migration guide
+│   ├── FEATURES_GUIDE.md           # 🆕 Complete features guide (consolidated)
+│   ├── NETWORK_SETUP.md            # Network/LAN configuration
+│   ├── PRODUCTION_DEPLOYMENT.md    # Production deployment
+│   ├── REDIS_COMPLETE_GUIDE.md     # 🆕 Redis setup & troubleshooting
+│   ├── ADMIN_GUIDE.md              # Admin operations
+│   ├── USER_GUIDE.md               # User manual
+│   ├── DEPLOYMENT_GUIDE.md         # Docker deployment
+│   ├── HANDOVER_DOCUMENT.md        # Project handover
+│   └── architecture/               # Architecture decisions
+│
+└── scripts/                         # Webapp utility scripts
+    ├── deploy.sh                   # Deployment automation
+    ├── backup.sh                   # Database backup
+    ├── setup_ollama.sh             # Ollama setup
+    └── security_validator.py       # Security checks
+```
+
+**Key Organization Principles (October 2024)**:
+- **Root**: Only README.md, CLAUDE.md, LICENSE, .gitignore + gitignored folders
+- **webapp/**: ALL code, tests, documentation, and scripts
+- **webapp/docs/**: Centralized documentation for entire project
+- **webapp/backend/**: Backend code, services, scripts, backend-specific docs
+- **webapp/tests/**: ALL test files (root + backend + integration)
+- **Clean separation**: Dev dependencies in webapp/requirements.txt, backend production in webapp/backend/requirements.txt
 
 ## Usage Patterns
 
@@ -455,13 +568,17 @@ processor = PDFProcessor(config=config)
 
 ## Next Steps
 
-1. **Install dependencies**: `pip install -r requirements.txt`
+1. **Install dependencies**:
+   - Dev/testing: `pip install -r webapp/requirements.txt`
+   - Backend production: `pip install -r webapp/backend/requirements.txt`
 2. **Download NLTK data**: `python -c "import nltk; nltk.download('punkt_tab')"`
-3. Run `python examples/basic_usage.py` to test with FastAPI docs
-4. Try `python examples/generic_usage.py` for interactive demo
+3. **Setup backend**: Follow `webapp/INSTALLATION_GUIDE.md`
+4. **Start application**:
+   - Backend: `cd webapp/backend && python main.py`
+   - Frontend: `cd webapp/frontend && npm start`
 5. Upload PDFs via the web interface to test PDF processing
 6. Use with Ollama (`ollama serve` + `ollama pull mistral`) for full generation
-7. Adjust parameters based on your content and needs
+7. Enable enhanced RAG features via Settings UI (reranker, hybrid search, query expansion)
 8. Experiment with different domains, PDFs, and content types
 
 ## Important Notes

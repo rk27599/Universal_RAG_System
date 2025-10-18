@@ -22,10 +22,12 @@ Complete guide for setting up and running the RAG Web Application on your own PC
 | Software | Version | Purpose | Installation Link |
 |----------|---------|---------|------------------|
 | **Python** | 3.12+ | Backend runtime | [python.org/downloads](https://www.python.org/downloads/) |
+| **PyTorch** | 2.6.0+ | BGE-M3 embeddings (CUDA 12.4+) | [pytorch.org](https://pytorch.org/) |
 | **Node.js** | 18+ | Frontend runtime | [nodejs.org](https://nodejs.org/) |
 | **npm** | 9+ | Package manager | Included with Node.js |
 | **Ollama** | Latest | Local LLM service | [ollama.ai](https://ollama.ai/) |
-| **PostgreSQL** | 15+ | **Production database (PRIMARY)** | [postgresql.org](https://www.postgresql.org/download/) |
+| **Redis** | 7.0+ | **WebSocket sessions (REQUIRED for production)** | [redis.io](https://redis.io/download/) |
+| **PostgreSQL** | 15+ | **Production database (RECOMMENDED - 50x faster)** | [postgresql.org](https://www.postgresql.org/download/) |
 | **SQLite** | Built-in | Development database (backup) | Included with Python |
 
 ### System Requirements
@@ -129,15 +131,96 @@ curl http://localhost:11434/api/tags
 ollama pull mistral        # 4.1GB - Recommended, fast and capable
 ollama pull llama2         # 3.8GB - Alternative option
 ollama pull codellama      # 3.8GB - For code-related tasks
-
-# Pull embedding model (required for RAG)
-ollama pull all-minilm     # 45MB - For document embeddings
 ```
+
+**Important**: This application uses **BGE-M3** embeddings (1024-dim), which are auto-downloaded by the backend. There's no need to pull embedding models via Ollama.
 
 **Verify models:**
 ```bash
 ollama list
+# You should see mistral, llama2, or codellama
+# Embeddings are handled separately by the backend
 ```
+
+---
+
+### Step 2.5: Install and Configure Redis (REQUIRED for Production)
+
+Redis is **REQUIRED** for multi-worker WebSocket session management. Without Redis, WebSocket connections will fail in production deployments.
+
+#### 2.5.1 Install Redis
+
+**Ubuntu/Debian:**
+```bash
+sudo apt-get update
+sudo apt-get install redis-server
+```
+
+**macOS:**
+```bash
+brew install redis
+```
+
+**Windows (WSL2):**
+```bash
+sudo apt-get install redis-server
+```
+
+#### 2.5.2 Start Redis Service
+
+```bash
+# Start Redis server
+sudo systemctl start redis-server  # Linux
+brew services start redis           # macOS
+
+# Verify Redis is running
+redis-cli ping
+# Expected output: PONG
+```
+
+#### 2.5.3 Configure Redis for Localhost Only
+
+```bash
+# Edit Redis configuration
+sudo nano /etc/redis/redis.conf  # Linux
+# or
+nano /usr/local/etc/redis.conf   # macOS
+
+# Find and verify this line (should be default):
+bind 127.0.0.1 ::1
+
+# Save and restart Redis
+sudo systemctl restart redis-server  # Linux
+brew services restart redis           # macOS
+```
+
+#### 2.5.4 Test Redis Connection
+
+```bash
+# Test basic connection
+redis-cli
+> SET test "Redis is working!"
+> GET test
+> EXIT
+
+# Test from Python (after backend setup)
+python3 -c "import redis; r = redis.Redis(host='localhost', port=6379, db=0); print('✅ Redis connection:', r.ping())"
+```
+
+**Why Redis is Required:**
+- ✅ Multi-worker WebSocket session sharing
+- ✅ Prevents "Invalid session" errors
+- ✅ Enables horizontal scaling (4+ workers)
+- ✅ Stable chat connections across workers
+
+**For Development (Single Worker)**: You can disable Redis in `.env`:
+```bash
+REDIS_ENABLED=False  # Only for single-worker development!
+```
+
+⚠️ **Warning**: Without Redis, you CANNOT run multiple workers. Production deployments MUST have Redis.
+
+---
 
 ### Step 3: Backend Setup
 
@@ -164,7 +247,36 @@ source venv/Scripts/activate
 venv\Scripts\activate.bat
 ```
 
-#### 3.3 Install Python Dependencies
+#### 3.3 Install PyTorch with CUDA Support (REQUIRED)
+
+**Important**: BGE-M3 embeddings require PyTorch 2.6.0+ with CUDA 12.4+ for optimal performance.
+
+```bash
+# Install PyTorch 2.6.0 with CUDA 12.4 support (recommended for GPU)
+pip install torch==2.6.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+
+# Verify CUDA availability
+python3 -c "import torch; print(f'PyTorch {torch.__version__}'); print(f'CUDA Available: {torch.cuda.is_available()}'); print(f'CUDA Version: {torch.version.cuda if torch.cuda.is_available() else \"N/A\"}')"
+```
+
+**Expected output** (if CUDA available):
+```
+PyTorch 2.6.0+cu124
+CUDA Available: True
+CUDA Version: 12.4
+```
+
+**For CPU-only systems** (slower but functional):
+```bash
+# Install CPU-only PyTorch
+pip install torch==2.6.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+```
+
+⚠️ **Note**: CPU-only embeddings are ~10-20x slower than GPU. GPU is highly recommended for production.
+
+---
+
+#### 3.4 Install Python Dependencies
 
 ```bash
 # Upgrade pip
@@ -177,11 +289,17 @@ pip install -r requirements.txt
 This installs:
 - FastAPI & Uvicorn (web server)
 - SQLAlchemy (database ORM)
+- PostgreSQL adapter (psycopg2)
+- Redis client (redis 5.0.1)
+- python-socketio (5.11.0) for WebSocket
+- FlagEmbedding 1.3.5 (BGE-M3 model)
 - Ollama integration libraries
 - Security & authentication
-- ML libraries (scikit-learn, sentence-transformers)
+- ML libraries (scikit-learn, numpy, pandas)
 
-#### 3.4 Configure Database
+**Note**: PyTorch 2.6.0+ is already installed from Step 3.3 above.
+
+#### 3.5 Configure Database
 
 **⚡ PostgreSQL (Recommended - 50x Faster)**
 
@@ -238,7 +356,7 @@ cp .env.dev .env
 
 ⚠️ **Note**: SQLite is **50x slower** for vector search. Use PostgreSQL for production.
 
-#### 3.5 Initialize Database
+#### 3.6 Initialize Database
 
 ```bash
 # Run database initialization
@@ -253,7 +371,7 @@ Expected output:
 ✅ HNSW index created for vector search
 ```
 
-#### 3.6 Migrate Existing Data (Optional)
+#### 3.7 Migrate Existing Data (Optional)
 
 If you have existing SQLite data to migrate:
 
@@ -265,7 +383,7 @@ python migrate_sqlite_to_postgres.py --sqlite-path ./test.db
 python migrate_sqlite_to_postgres.py --dry-run
 ```
 
-#### 3.7 Configure Environment Variables
+#### 3.8 Configure Environment Variables
 
 ```bash
 # For production (PostgreSQL - already created by setup script)
@@ -286,6 +404,11 @@ DATABASE_URL=postgresql://rag_user:secure_rag_password_2024@localhost:5432/rag_d
 
 # Or SQLite (Development/Backup)
 # DATABASE_URL=sqlite:///./dev.db
+
+# Redis (Required for multi-worker WebSocket)
+REDIS_URL=redis://localhost:6379
+REDIS_DB=0
+REDIS_ENABLED=True  # Set to False only for single-worker development
 
 # Application
 DEBUG=False
@@ -621,12 +744,17 @@ DATABASE_URL: str = "postgresql://rag_user:secure_rag_password_2024@localhost:54
 OLLAMA_BASE_URL: str = "http://localhost:11434"
 DEFAULT_MODEL: str = "mistral"
 
+# Redis
+REDIS_URL: str = "redis://localhost:6379"
+REDIS_DB: int = 0
+REDIS_ENABLED: bool = True  # Required for multi-worker
+
 # Security
 ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 MAX_FILE_SIZE: int = 50 * 1024 * 1024  # 50MB
 
-# Vector search (pgvector)
-VECTOR_DIMENSION: int = 384  # sentence-transformers/all-MiniLM-L6-v2
+# Vector search (pgvector with BGE-M3)
+VECTOR_DIMENSION: int = 1024  # BGE-M3 embeddings (BAAI/bge-m3)
 ```
 
 ### Frontend Configuration
@@ -797,6 +925,6 @@ pkill uvicorn
 
 ---
 
-**Last Updated**: October 2025
+**Last Updated**: October 2024
 **Version**: 1.0.0
 **Maintainer**: RAG System Team

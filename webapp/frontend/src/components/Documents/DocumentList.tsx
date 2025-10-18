@@ -41,6 +41,7 @@ import {
   Code as HtmlIcon,
 } from '@mui/icons-material';
 import apiService, { Document } from '../../services/api';
+import { useChat } from '../../contexts/ChatContext';
 
 interface DocumentListProps {
   onDocumentSelect?: (document: Document) => void;
@@ -51,6 +52,7 @@ const DocumentList: React.FC<DocumentListProps> = ({
   onDocumentSelect,
   refreshTrigger,
 }) => {
+  const { documentProgress } = useChat();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [filteredDocuments, setFilteredDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
@@ -61,6 +63,9 @@ const DocumentList: React.FC<DocumentListProps> = ({
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [documentToDelete, setDocumentToDelete] = useState<Document | null>(null);
+
+  // Local progress state for API polling fallback (merged with WebSocket progress)
+  const [localProgress, setLocalProgress] = useState<Record<number, { stage: string; progress: number }>>({});
 
   // Load documents
   const loadDocuments = async () => {
@@ -105,6 +110,88 @@ const DocumentList: React.FC<DocumentListProps> = ({
 
     setFilteredDocuments(filtered);
   }, [documents, searchQuery, statusFilter]);
+
+  // Poll progress for processing documents (fallback when WebSocket state lost after refresh)
+  useEffect(() => {
+    const processingDocs = documents.filter(doc => doc.status === 'processing');
+
+    if (processingDocs.length === 0) {
+      return;
+    }
+
+    // Initial fetch for all processing documents
+    const fetchInitialProgress = async () => {
+      for (const doc of processingDocs) {
+        try {
+          const response = await apiService.getDocument(doc.id);
+          if (response.success && response.data.progress !== undefined) {
+            const docId = parseInt(doc.id, 10);
+            const progressValue = response.data.progress ?? 0;
+            setLocalProgress(prev => ({
+              ...prev,
+              [docId]: {
+                stage: getStageFromProgress(progressValue),
+                progress: progressValue
+              }
+            }));
+          }
+        } catch (error) {
+          console.error(`Failed to fetch progress for document ${doc.id}:`, error);
+        }
+      }
+    };
+
+    fetchInitialProgress();
+
+    // Poll every 2 seconds
+    const intervalId = setInterval(async () => {
+      for (const doc of processingDocs) {
+        try {
+          const response = await apiService.getDocument(doc.id);
+          if (response.success) {
+            const docId = parseInt(doc.id, 10);
+
+            if (response.data.status === 'completed' || response.data.status === 'failed') {
+              // Remove from local progress when done
+              setLocalProgress(prev => {
+                const updated = { ...prev };
+                delete updated[docId];
+                return updated;
+              });
+
+              // Refresh document list to update status
+              loadDocuments();
+            } else if (response.data.progress !== undefined) {
+              // Update progress
+              const progressValue = response.data.progress ?? 0;
+              setLocalProgress(prev => ({
+                ...prev,
+                [docId]: {
+                  stage: getStageFromProgress(progressValue),
+                  progress: progressValue
+                }
+              }));
+            }
+          }
+        } catch (error) {
+          console.error(`Failed to poll progress for document ${doc.id}:`, error);
+        }
+      }
+    }, 2000);
+
+    return () => clearInterval(intervalId);
+  }, [documents]);
+
+  // Helper function to derive stage from progress percentage
+  const getStageFromProgress = (progress: number): string => {
+    if (progress < 5) return 'Starting PDF processing';
+    if (progress < 40) return 'Extracting pages';
+    if (progress < 60) return 'Extracting tables';
+    if (progress < 80) return 'Extracting images';
+    if (progress < 90) return 'Creating chunks';
+    if (progress < 98) return 'Generating embeddings';
+    return 'Building index';
+  };
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>, document: Document) => {
     event.stopPropagation();
@@ -360,14 +447,48 @@ const DocumentList: React.FC<DocumentListProps> = ({
                   )}
 
                   {/* Processing Progress */}
-                  {document.status === 'processing' && (
-                    <Box sx={{ mb: 2 }}>
-                      <LinearProgress />
-                      <Typography variant="caption" color="text.secondary">
-                        Processing document...
-                      </Typography>
-                    </Box>
-                  )}
+                  {document.status === 'processing' && (() => {
+                    const docId = parseInt(document.id, 10);
+                    // Merge WebSocket progress (priority) with local API polling progress (fallback)
+                    const progress = documentProgress[docId] || localProgress[docId];
+
+                    return (
+                      <Box sx={{ mb: 2 }}>
+                        {progress ? (
+                          <>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+                              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
+                                {progress.stage}
+                              </Typography>
+                              <Typography variant="caption" color="primary" sx={{ fontWeight: 'bold' }}>
+                                {progress.progress.toFixed(1)}%
+                              </Typography>
+                            </Box>
+                            <LinearProgress
+                              variant="determinate"
+                              value={progress.progress}
+                              sx={{
+                                height: 6,
+                                borderRadius: 1,
+                                backgroundColor: 'rgba(0, 0, 0, 0.1)',
+                                '& .MuiLinearProgress-bar': {
+                                  borderRadius: 1,
+                                  transition: 'transform 0.4s ease-in-out',
+                                },
+                              }}
+                            />
+                          </>
+                        ) : (
+                          <>
+                            <LinearProgress />
+                            <Typography variant="caption" color="text.secondary">
+                              Processing document...
+                            </Typography>
+                          </>
+                        )}
+                      </Box>
+                    );
+                  })()}
 
                   {/* Metadata */}
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>

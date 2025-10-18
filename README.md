@@ -4,23 +4,36 @@ A production-ready **Retrieval-Augmented Generation (RAG) web application** with
 
 ## 🚀 Key Features
 
+### Core Features
 - **🔐 Secure Authentication**: JWT-based auth with bcrypt password hashing
-- **📄 Document Processing**: Upload HTML, PDF, TXT files with async processing
-- **🧠 Semantic Search**: PostgreSQL pgvector with 50x faster vector search
-- **💬 Real-Time Chat**: WebSocket-based chat with streaming responses
-- **🤖 Local LLM Integration**: Ollama integration (Mistral, Llama2, CodeLlama)
+- **📄 Advanced Document Processing**: Upload HTML, PDF, TXT files with async processing + real-time progress tracking
+- **🧠 BGE-M3 Embeddings**: State-of-the-art 1024-dim embeddings (16x larger context window than MiniLM)
+- **💬 Real-Time Chat**: WebSocket-based chat with streaming responses and Redis session management
+- **🤖 Local LLM Integration**: Ollama integration (Mistral, Llama2, CodeLlama) with configurable system prompts
 - **📊 Rich Metadata**: Track sources, sections, and similarity scores
 - **🎨 Modern UI**: React + TypeScript + Material-UI frontend
-- **⚡ High Performance**: Async document processing, connection pooling
+- **⚡ High Performance**: Async document processing, connection pooling, memory optimization
 - **🛡️ Security-First**: Local-only deployment, no external dependencies
-- **📈 Production-Ready**: Multi-worker support, SSL/TLS, rate limiting
+- **📈 Production-Ready**: Multi-worker support, SSL/TLS, rate limiting, Redis WebSocket management
+
+### 🆕 Enhanced RAG Features (October 2024)
+- **🎯 Reranker Service**: Cross-encoder model for re-ranking search results (higher precision)
+- **🔍 Hybrid Search**: BM25 (keyword) + Vector (semantic) search with ensemble retrieval
+- **🧩 Query Expansion**: Multi-query generation for comprehensive retrieval coverage
+- **✅ Corrective RAG**: Self-grading retrieval with web search fallback for missing knowledge
+- **📝 System Prompt Configuration**: Customizable expert prompts with citation enforcement
+- **🧠 Memory Manager**: Adaptive batching and model unloading for OOM prevention
+- **📊 Document Progress Tracking**: Real-time WebSocket updates + API polling during processing
 
 ## 📋 Requirements
 
-- **Python 3.12+**
+- **Python 3.12+** (migrated from 3.10 - October 2024, ~10-15% faster)
+- **PyTorch 2.6.0+** with CUDA 12.4+ (required for BGE-M3 embeddings)
 - **Node.js 18+** (for frontend)
 - **PostgreSQL 14+** with pgvector extension
+- **Redis 7.0+** (for WebSocket session management)
 - **Ollama** (for LLM integration)
+- **GPU Recommended**: 8GB+ VRAM for optimal embedding/reranker performance
 
 ## 🔧 Quick Start
 
@@ -74,93 +87,139 @@ Access the application at **http://localhost:3000**
 
 ```
 /home/rkpatel/RAG/
-├── README.md                        # This file
+├── README.md                        # This file - Project overview
 ├── CLAUDE.md                        # Project instructions for AI assistants
 ├── LICENSE                          # Open source license
-├── requirements.txt                 # Core Python dependencies
+├── .gitignore                       # Git ignore rules
 │
-├── docs/                            # Webapp documentation
-│   ├── NETWORK_SETUP.md            # Network access configuration
-│   └── PRODUCTION_DEPLOYMENT.md     # Production deployment guide
+├── logs/                            # Application logs (gitignored)
+├── data/                            # Data files (gitignored)
+├── archive/                         # Old RAG system (reference)
+├── venv/                            # Python virtual environment
 │
-├── webapp/                          # 🎯 Main Web Application
-│   ├── README.md                   # Webapp overview
-│   ├── INSTALLATION_GUIDE.md       # Detailed setup instructions
-│   │
-│   ├── backend/                    # FastAPI Backend (Python)
-│   │   ├── api/                   # REST API endpoints
-│   │   │   ├── auth.py           # Authentication
-│   │   │   ├── chat.py           # WebSocket chat + messages
-│   │   │   ├── documents.py      # Document upload/management
-│   │   │   └── models.py         # Ollama model info
-│   │   │
-│   │   ├── core/                  # Core configuration
-│   │   │   ├── config.py         # Settings management
-│   │   │   ├── database.py       # SQLAlchemy setup
-│   │   │   └── security.py       # JWT & password hashing
-│   │   │
-│   │   ├── models/                # Database models
-│   │   │   ├── user.py           # User model
-│   │   │   ├── document.py       # Document & Chunk models
-│   │   │   └── conversation.py   # Chat models
-│   │   │
-│   │   ├── services/              # Business logic
-│   │   │   ├── document_service.py    # Document processing
-│   │   │   ├── embedding_service.py   # Vector embeddings
-│   │   │   ├── rag_service.py         # RAG retrieval
-│   │   │   └── ollama_service.py      # LLM integration
-│   │   │
-│   │   ├── utils/                 # Utility modules
-│   │   │   └── async_web_scraper.py   # HTML content extraction
-│   │   │
-│   │   ├── main.py                # FastAPI application entry
-│   │   ├── init_db.py             # Database initialization
-│   │   └── requirements.txt       # Backend dependencies
-│   │
-│   ├── frontend/                   # React Frontend (TypeScript)
-│   │   ├── src/
-│   │   │   ├── components/        # React components
-│   │   │   │   ├── Auth/         # Login, Register
-│   │   │   │   ├── Chat/         # Chat interface, conversations
-│   │   │   │   ├── Documents/    # Upload, document list
-│   │   │   │   ├── Layout/       # App layout, sidebar
-│   │   │   │   └── Settings/     # Model settings
-│   │   │   │
-│   │   │   ├── contexts/          # React contexts
-│   │   │   │   ├── AuthContext.tsx    # Auth state
-│   │   │   │   └── ChatContext.tsx    # Chat state + WebSocket
-│   │   │   │
-│   │   │   ├── services/          # API services
-│   │   │   │   └── api.ts        # Axios API client
-│   │   │   │
-│   │   │   ├── config/            # Configuration
-│   │   │   │   └── config.ts     # App settings
-│   │   │   │
-│   │   │   ├── App.tsx            # Main app component
-│   │   │   └── index.tsx          # React entry point
-│   │   │
-│   │   ├── public/                # Static assets
-│   │   ├── package.json           # Node dependencies
-│   │   └── README.md              # Frontend documentation
-│   │
-│   └── docs/                       # Webapp Documentation
-│       ├── README.md              # Docs index
-│       ├── ADMIN_GUIDE.md         # Admin operations
-│       ├── USER_GUIDE.md          # User manual
-│       ├── DEPLOYMENT_GUIDE.md    # Docker deployment
-│       ├── HANDOVER_DOCUMENT.md   # Project handover
-│       └── architecture/          # Architecture decisions
-│
-├── archive/                        # Old RAG System (Reference)
-│   └── old_rag_system/
-│       ├── src/                   # Old RAG source code
-│       ├── examples/              # Usage examples
-│       ├── tests/                 # Tests
-│       ├── notebooks/             # Jupyter notebooks
-│       └── docs/                  # Old RAG documentation
-│
-└── venv/                          # Python virtual environment
+└── webapp/                          # 🎯 Main Web Application (ALL code & docs here)
+    ├── requirements.txt             # Dev/testing dependencies
+    ├── tests/                       # All test files
+    │   ├── test_enhanced_rag_e2e.py     # End-to-end RAG tests
+    │   ├── test_pdf_sample.py           # PDF processing tests
+    │   ├── test_phase3_integration.py   # Phase 3 integration tests
+    │   └── validate_phases_1_2.py       # Phase 1 & 2 validation
+    │
+    ├── README.md                    # Webapp overview
+    ├── INSTALLATION_GUIDE.md        # Detailed setup instructions
+    │
+    ├── backend/                     # FastAPI Backend (Python)
+    │   ├── api/                   # REST API endpoints
+    │   │   ├── auth.py           # Authentication
+    │   │   ├── chat.py           # WebSocket chat + messages + Redis
+    │   │   ├── documents.py      # Document upload/management
+    │   │   └── models.py         # Ollama model info
+    │   │
+    │   ├── core/                  # Core configuration
+    │   │   ├── config.py         # Settings management + Redis config
+    │   │   ├── database.py       # SQLAlchemy setup
+    │   │   └── security.py       # JWT & password hashing
+    │   │
+    │   ├── models/                # Database models
+    │   │   ├── user.py           # User model
+    │   │   ├── document.py       # Document & Chunk models (progress tracking)
+    │   │   └── conversation.py   # Chat models
+    │   │
+    │   ├── services/              # Business logic
+    │   │   ├── document_service.py         # Document processing with progress
+    │   │   ├── embedding_service_bge.py    # BGE-M3 embeddings (1024-dim)
+    │   │   ├── pdf_processor.py            # Advanced PDF processing
+    │   │   ├── enhanced_search_service.py  # 🆕 Unified enhanced RAG
+    │   │   ├── reranker_service.py         # 🆕 Cross-encoder reranking
+    │   │   ├── bm25_retriever.py           # 🆕 BM25 keyword search
+    │   │   ├── ensemble_retriever.py       # 🆕 Hybrid search orchestration
+    │   │   ├── query_expander.py           # 🆕 Multi-query generation
+    │   │   ├── corrective_rag.py           # 🆕 Self-grading RAG
+    │   │   ├── web_search_fallback.py      # 🆕 External knowledge fallback
+    │   │   ├── document_recovery_service.py # 🆕 Document repair/recovery
+    │   │   ├── rag_service.py              # RAG retrieval orchestration
+    │   │   └── ollama_service.py           # LLM integration
+    │   │
+    │   ├── utils/                 # Utility modules
+    │   │   ├── async_web_scraper.py   # HTML content extraction
+    │   │   └── memory_manager.py      # 🆕 RAM/swap monitoring, adaptive batching
+    │   │
+    │   ├── prompts/               # 🆕 LLM Prompt Templates
+    │   │   ├── citation_template.py    # Citation-enforcing prompts
+    │   │   ├── cot_template.py         # Chain-of-thought prompts
+    │   │   └── extractive_template.py  # Extractive QA prompts
+    │   │
+    │   ├── scripts/               # Backend scripts
+    │   │   ├── reembed_with_bge_m3.py   # BGE-M3 migration script
+    │   │   ├── setup_postgres.sh        # Database setup
+    │   │   ├── redis_health.py          # Redis monitoring
+    │   │   └── migrate_*.py             # Database migrations
+    │   │
+    │   ├── docs/                  # Backend documentation
+    │   │   ├── ENHANCED_SEARCH_INTEGRATION.md  # RAG features guide
+    │   │   ├── README_ENHANCED_SEARCH.md       # Enhanced search overview
+    │   │   ├── TESTING_GUIDE.md                # Testing documentation
+    │   │   ├── VECTOR_SEARCH_OPTIMIZATION.md   # Performance tuning
+    │   │   └── redis/                          # Redis-specific docs
+    │   │       ├── REDIS_DEPLOYMENT_STEPS.md
+    │   │       ├── REDIS_FIX_SUMMARY.md
+    │   │       └── FIX_REDIS_PUBSUB.md
+    │   │
+    │   ├── tests/                 # Backend tests
+    │   │   └── test_enhanced_search_integration.py
+    │   │
+    │   ├── main.py                # FastAPI application entry
+    │   ├── init_db.py             # Database initialization
+    │   └── requirements.txt       # Backend dependencies
+    │
+    ├── frontend/                   # React Frontend (TypeScript)
+    │   ├── src/
+    │   │   ├── components/        # React components
+    │   │   │   ├── Auth/         # Login, Register
+    │   │   │   ├── Chat/         # Chat interface, conversations
+    │   │   │   ├── Documents/    # Upload, document list (🆕 progress tracking)
+    │   │   │   ├── Layout/       # App layout, sidebar
+    │   │   │   └── Settings/     # Model settings (🆕 system prompt config)
+    │   │   │
+    │   │   ├── contexts/          # React contexts
+    │   │   │   ├── AuthContext.tsx    # Auth state
+    │   │   │   └── ChatContext.tsx    # Chat state + WebSocket
+    │   │   │
+    │   │   ├── services/          # API services
+    │   │   │   └── api.ts        # Axios API client
+    │   │   │
+    │   │   ├── config/            # Configuration
+    │   │   │   └── config.ts     # App settings
+    │   │   │
+    │   │   ├── App.tsx            # Main app component
+    │   │   └── index.tsx          # React entry point
+    │   │
+    │   ├── public/                # Static assets
+    │   ├── package.json           # Node dependencies
+    │   └── README.md              # Frontend documentation
+    │
+    ├── docs/                       # 📚 Complete Documentation
+    │   ├── README.md              # Docs index
+    │   ├── README_ROOT.md         # Root docs overview
+    │   ├── BGE_M3_MIGRATION_GUIDE.md   # 🆕 BGE-M3 migration guide
+    │   ├── FEATURES_GUIDE.md      # 🆕 Complete features guide (consolidated)
+    │   ├── NETWORK_SETUP.md       # Network/LAN configuration
+    │   ├── PRODUCTION_DEPLOYMENT.md  # Production deployment
+    │   ├── REDIS_COMPLETE_GUIDE.md   # Redis setup & troubleshooting
+    │   ├── ADMIN_GUIDE.md         # Admin operations
+    │   ├── USER_GUIDE.md          # User manual
+    │   ├── DEPLOYMENT_GUIDE.md    # Docker deployment
+    │   ├── HANDOVER_DOCUMENT.md   # Project handover
+    │   └── architecture/          # Architecture decisions
+    │
+    └── scripts/                    # Webapp utility scripts
+        ├── deploy.sh              # Deployment automation
+        ├── backup.sh              # Database backup
+        ├── setup_ollama.sh        # Ollama setup
+        └── security_validator.py  # Security checks
 ```
+
+**Note**: 🆕 indicates new features/files added in October 2024 reorganization.
 
 ## 🎯 Main Components
 
@@ -210,13 +269,20 @@ Access the application at **http://localhost:3000**
 - [User Guide](webapp/docs/USER_GUIDE.md) - User manual
 - [Admin Guide](webapp/docs/ADMIN_GUIDE.md) - Admin operations
 
+### Features & Configuration
+- [Features Guide](webapp/docs/FEATURES_GUIDE.md) - 🆕 Complete RAG features overview
+- [BGE-M3 Migration Guide](webapp/docs/BGE_M3_MIGRATION_GUIDE.md) - 🆕 Embedding migration
+- [Enhanced Search Integration](webapp/backend/docs/ENHANCED_SEARCH_INTEGRATION.md) - 🆕 Technical details
+
 ### Deployment
-- [Network Setup](docs/NETWORK_SETUP.md) - LAN access configuration
-- [Production Deployment](docs/PRODUCTION_DEPLOYMENT.md) - Production guide
+- [Network Setup](webapp/docs/NETWORK_SETUP.md) - LAN access configuration
+- [Production Deployment](webapp/docs/PRODUCTION_DEPLOYMENT.md) - Production guide
+- [Redis Setup](webapp/docs/REDIS_COMPLETE_GUIDE.md) - 🆕 Redis configuration
 - [Docker Deployment](webapp/docs/DEPLOYMENT_GUIDE.md) - Docker setup
 
 ### Development
 - [Architecture](webapp/docs/architecture/) - System design
+- [Testing Guide](webapp/backend/docs/TESTING_GUIDE.md) - Testing documentation
 - [Handover Document](webapp/docs/HANDOVER_DOCUMENT.md) - Project overview
 
 ## 🧪 Testing

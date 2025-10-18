@@ -20,6 +20,7 @@ interface ChatState {
   selectedModel: string;
   hasMoreMessages: boolean;
   totalMessages: number;
+  documentProgress: Record<number, { stage: string; progress: number }>;
 }
 
 interface ChatContextType extends ChatState {
@@ -53,6 +54,11 @@ interface SendMessageOptions {
   documentIds?: string[];
   useExpertPrompt?: boolean;  // Default true - use Material Studio expert prompt
   customSystemPrompt?: string;  // Optional custom system prompt
+  // Enhanced RAG features
+  useReranker?: boolean;
+  useQueryExpansion?: boolean;
+  useHybridSearch?: boolean;
+  promptTemplate?: string | null;
 }
 
 type ChatAction =
@@ -72,6 +78,7 @@ type ChatAction =
   | { type: 'SET_SELECTED_MODEL'; payload: string }
   | { type: 'SET_PAGINATION'; payload: { hasMore: boolean; total: number } }
   | { type: 'CLEAR_MESSAGES' }
+  | { type: 'SET_DOCUMENT_PROGRESS'; payload: { documentId: number; stage: string; progress: number } }
   | { type: 'RESET_STATE' };
 
 const initialState: ChatState = {
@@ -86,6 +93,7 @@ const initialState: ChatState = {
   selectedModel: config.models.defaultModel,
   hasMoreMessages: false,
   totalMessages: 0,
+  documentProgress: {},
 };
 
 const chatReducer = (state: ChatState, action: ChatAction): ChatState => {
@@ -162,6 +170,18 @@ const chatReducer = (state: ChatState, action: ChatAction): ChatState => {
 
     case 'CLEAR_MESSAGES':
       return { ...state, messages: [], hasMoreMessages: false, totalMessages: 0 };
+
+    case 'SET_DOCUMENT_PROGRESS':
+      return {
+        ...state,
+        documentProgress: {
+          ...state.documentProgress,
+          [action.payload.documentId]: {
+            stage: action.payload.stage,
+            progress: action.payload.progress
+          }
+        }
+      };
 
     case 'RESET_STATE':
       return initialState;
@@ -296,6 +316,19 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         dispatch({ type: 'SET_ERROR', payload: error.message || 'Connection error' });
         console.error('WebSocket error:', error);
       });
+
+      // Handle document processing progress
+      socket.on('document_progress', (data: { document_id: number; stage: string; progress: number }) => {
+        console.log('📊 Document progress:', data);
+        dispatch({
+          type: 'SET_DOCUMENT_PROGRESS',
+          payload: {
+            documentId: data.document_id,
+            stage: data.stage,
+            progress: data.progress
+          }
+        });
+      });
     };
 
     // Connect on mount
@@ -388,7 +421,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
           dispatch({ type: 'SET_MODELS', payload: modelsResponse.data });
 
           // Auto-select first model if default "gpt-oss:latest" is not available
-          const preferredModel = 'gpt-oss:latest';
+          const preferredModel = 'dolphin-llama3:latest';
           const isPreferredModelAvailable = modelsResponse.data.includes(preferredModel);
 
           if (!isPreferredModelAvailable && modelsResponse.data.length > 0) {

@@ -113,3 +113,32 @@ starlette==0.27.0
 
 # Environment detection
 python-decouple==3.8
+
+# RAG Enhancement Dependencies (Added for 9 enhancements)
+
+# 1. Reranker - Cross-encoder reranking with BGE-reranker-v2-m3
+# FlagEmbedding==1.3.5  # Already included for BGE-M3 embeddings
+
+# 2. Hybrid Search - BM25 + Vector ensemble retrieval
+rank-bm25==0.2.2
+
+# 3. Query Expansion & Corrective RAG - LangGraph workflow
+langgraph==0.0.20
+langchain-core==0.1.20
+
+# 4. Web Search Fallback - DuckDuckGo for corrective RAG (optional, privacy-preserving)
+duckduckgo-search==4.1.0
+
+# 5. Evaluation Framework - RAGAS metrics for RAG quality assessment
+ragas==0.1.1
+datasets==2.16.1
+
+# 6. Document Parsing Enhancement - Unstructured.io for complex layouts (OPTIONAL)
+# unstructured[all-docs]==0.11.4  # Uncomment if needed for complex PDFs
+
+# Note: All enhancements maintain local-first architecture
+# - Reranker: Local BGE model (no external API)
+# - Query Expansion: Local Ollama (Mistral/Llama2)
+# - Hybrid Search: Local BM25 + local pgvector
+# - Corrective RAG: Local LLM scoring, optional DuckDuckGo fallback (user-controlled)
+# - Evaluation: Local RAGAS (no external services)

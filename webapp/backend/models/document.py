@@ -129,6 +129,33 @@ class Document(BaseModel, SecurityAuditMixin):
             "error": self.processing_error
         }
 
+    @classmethod
+    def get_stuck_documents(cls, db, stuck_threshold_minutes: int = 5) -> List['Document']:
+        """
+        Find documents stuck in processing or pending status
+
+        A document is considered stuck if it's in "pending" or "processing" status
+        and was created more than stuck_threshold_minutes ago.
+
+        Args:
+            db: Database session (Session object)
+            stuck_threshold_minutes: Minutes before document is considered stuck (default: 5)
+
+        Returns:
+            List of Document objects stuck in processing
+        """
+        from datetime import datetime, timezone, timedelta
+        from sqlalchemy.orm import Session
+
+        threshold_time = datetime.now(timezone.utc) - timedelta(minutes=stuck_threshold_minutes)
+
+        stuck_docs = db.query(cls).filter(
+            cls.processing_status.in_(["pending", "processing"]),
+            cls.created_at < threshold_time
+        ).all()
+
+        return stuck_docs
+
 
 class Chunk(BaseModel, SecurityAuditMixin):
     """Document chunk model with vector embeddings"""

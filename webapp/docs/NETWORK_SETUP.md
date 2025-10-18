@@ -229,6 +229,10 @@ sudo ufw allow 8000/tcp
 # Allow React dev server port (if using development mode)
 sudo ufw allow 3000/tcp
 
+# Redis port 6379 (localhost-only, no firewall rule needed)
+# Note: Redis is configured to bind to 127.0.0.1 only (Step 6.2)
+# Firewall rules are not needed for localhost-only services
+
 # Enable firewall (if not already enabled)
 sudo ufw enable
 
@@ -248,6 +252,10 @@ netsh advfirewall firewall add rule name="RAG Backend Port 8000" dir=in action=a
 
 # Allow React dev server (optional)
 netsh advfirewall firewall add rule name="RAG Frontend Port 3000" dir=in action=allow protocol=TCP localport=3000
+
+# Redis port 6379 (localhost-only, no Windows firewall rule needed)
+# Note: Redis is configured to bind to 127.0.0.1 in WSL2 (Step 6.2)
+# Windows firewall rules are not needed for localhost-only WSL2 services
 
 # Verify rules
 netsh advfirewall firewall show rule name="RAG Backend Port 8000"

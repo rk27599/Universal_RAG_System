@@ -7,7 +7,7 @@ import logging
 import re
 import asyncio
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Callable, Awaitable
 from collections import defaultdict
 from dataclasses import dataclass
 
@@ -126,13 +126,19 @@ class PDFProcessor:
         self.image_storage_base = Path("data/uploads/images")
         self.image_storage_base.mkdir(parents=True, exist_ok=True)
 
-    async def process_pdf(self, pdf_path: Path, document_id: int) -> Optional[Dict]:
+    async def process_pdf(
+        self,
+        pdf_path: Path,
+        document_id: int,
+        progress_callback: Optional[Callable[[str, float], Awaitable[None]]] = None
+    ) -> Optional[Dict]:
         """
         Main entry point using PyMuPDF for text extraction
 
         Args:
             pdf_path: Path to PDF file
             document_id: Document ID for image storage
+            progress_callback: Optional async callback for progress updates (stage, percentage)
 
         Returns:
             Structured document data with sections, tables, images, and metadata
@@ -157,33 +163,59 @@ class PDFProcessor:
 
             logger.info(f"Processing PDF with PyMuPDF: {pdf_path} ({file_size_mb:.1f}MB)")
 
+            # Progress: Starting
+            if progress_callback:
+                await progress_callback("Starting PDF processing", 0)
+
             # Extract metadata
             metadata = await asyncio.to_thread(self.extract_metadata, pdf_path)
-            
+
+            # Progress: Extracting pages (0-40%)
+            if progress_callback:
+                await progress_callback("Extracting pages", 5)
+
             # Extract structured content using PyMuPDF (better spacing)
             structured_content = await asyncio.to_thread(
                 self.extract_with_pymupdf, pdf_path
             )
             logger.info(f"Extracted content from {len(structured_content)} pages")
 
+            if progress_callback:
+                await progress_callback("Extracting pages", 40)
+
             # Extract tables using pdfplumber (if available)
             tables_data = []
             if PDFPLUMBER_AVAILABLE:
+                if progress_callback:
+                    await progress_callback("Extracting tables", 45)
                 tables_data = await asyncio.to_thread(
                     self.extract_tables_pdfplumber, pdf_path
                 )
+                if progress_callback:
+                    await progress_callback("Extracting tables", 60)
 
             # Extract images
             images_data = []
             if PDFPLUMBER_AVAILABLE and PILLOW_AVAILABLE:
+                if progress_callback:
+                    await progress_callback("Extracting images", 65)
                 images_data = await self.extract_images_per_page(pdf_path, document_id)
+                if progress_callback:
+                    await progress_callback("Extracting images", 80)
 
             # Integrate tables into content
+            if progress_callback:
+                await progress_callback("Creating chunks", 82)
             structured_content = self._integrate_tables(structured_content, tables_data)
 
             # Create semantic chunks
+            if progress_callback:
+                await progress_callback("Creating chunks", 85)
             semantic_chunks = self.create_semantic_chunks(structured_content, images_data)
             logger.info(f"Created {len(semantic_chunks)} semantic chunks")
+
+            if progress_callback:
+                await progress_callback("Creating chunks", 90)
 
             sections = [chunk.to_dict() for chunk in semantic_chunks]
             total_words = sum(s['word_count'] for s in sections)

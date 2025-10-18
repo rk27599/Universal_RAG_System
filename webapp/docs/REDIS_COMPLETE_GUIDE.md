@@ -1,5 +1,7 @@
 # Redis Complete Guide - WebSocket Multi-Worker Support
 
+> **⚠️ REQUIRED FOR PRODUCTION**: Redis is **mandatory** for multi-worker deployments. Without Redis, WebSocket connections will fail with "Invalid session" and "403 Forbidden" errors. Single-worker development can optionally disable Redis, but this is **not recommended** for production.
+
 **Complete documentation for Redis session management in your RAG system**
 
 ---

@@ -64,7 +64,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
   const [folderPath, setFolderPath] = useState('');
   const [chunkSize, setChunkSize] = useState(2000); // Default 2000 characters
 
-  const validateFile = (file: File): string | null => {
+  const validateFile = useCallback((file: File): string | null => {
     // Check file size
     if (file.size > config.security.maxFileSize) {
       return `File too large. Maximum size: ${(config.security.maxFileSize / 1024 / 1024).toFixed(1)}MB`;
@@ -82,12 +82,12 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
     }
 
     return null;
-  };
+  }, []);
 
-  const showSnackbar = (message: string, severity: 'success' | 'error' | 'info' = 'info') => {
+  const showSnackbar = useCallback((message: string, severity: 'success' | 'error' | 'info' = 'info') => {
     setSnackbarMessage(message);
     setSnackbarSeverity(severity);
-  };
+  }, []);
 
   const handleHtmlDocsUpload = async (file: File) => {
     const validationError = validateFile(file);
@@ -300,7 +300,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
     }
   };
 
-  const pollProcessingStatus = async (file: File, documentId: string) => {
+  const pollProcessingStatus = useCallback(async (file: File, documentId: string) => {
     let processingComplete = false;
     let attempts = 0;
     const maxAttempts = 30; // 30 seconds timeout
@@ -377,9 +377,9 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
 
       showSnackbar(`Processing timeout for "${file.name}"`, 'error');
     }
-  };
+  }, [onUploadComplete, onUploadError, showSnackbar]);
 
-  const uploadFile = async (file: File) => {
+  const uploadFile = useCallback(async (file: File) => {
     const uploadId = Date.now().toString();
 
     // Add to uploading files
@@ -418,9 +418,9 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
 
         // Show embedding status
         if (response.data.embeddingsEnabled) {
-          showSnackbar(`🎯 Processing with semantic embeddings for best search quality!`, 'info');
+          showSnackbar(`🎯 Processing "${file.name}" with semantic embeddings!`, 'info');
         } else {
-          showSnackbar(`⚡ Processing with TF-IDF (fast mode - embeddings not available)`, 'info');
+          showSnackbar(`⚡ Processing "${file.name}" with TF-IDF (fast mode)`, 'info');
         }
 
         // Store embedding info
@@ -539,19 +539,23 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
 
       showSnackbar(`Error uploading "${file.name}": ${errorMessage}`, 'error');
     }
-  };
+  }, [chunkSize, onUploadComplete, onUploadError, showSnackbar]);
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
-    for (const file of acceptedFiles) {
+    // Process all files in parallel for better UX
+    const uploadPromises = acceptedFiles.map(async (file) => {
       const validationError = validateFile(file);
       if (validationError) {
         showSnackbar(validationError, 'error');
-        continue;
+        return;
       }
 
       await uploadFile(file);
-    }
-  }, []);
+    });
+
+    // Wait for all uploads to complete
+    await Promise.all(uploadPromises);
+  }, [uploadFile, validateFile, showSnackbar]);
 
   const removeUploadingFile = (file: File) => {
     setUploadingFiles(prev => prev.filter(f => f.file !== file));

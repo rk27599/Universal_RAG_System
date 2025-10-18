@@ -45,6 +45,24 @@ class DocumentProcessingService:
         self.embedding_service = get_embedding_service() if EMBEDDINGS_AVAILABLE else None
         self.upload_dir = Path("data/uploads")
         self.upload_dir.mkdir(parents=True, exist_ok=True)
+        self._sio = None  # Socket.IO instance for progress updates
+
+    async def _emit_progress(self, document_id: int, stage: str, progress: float):
+        """Emit document processing progress via WebSocket"""
+        try:
+            # Lazy import to avoid circular dependency
+            if self._sio is None:
+                from api.chat import sio
+                self._sio = sio
+
+            await self._sio.emit('document_progress', {
+                'document_id': document_id,
+                'stage': stage,
+                'progress': progress
+            })
+            logger.debug(f"📡 Progress emitted: doc={document_id}, stage={stage}, progress={progress:.1f}%")
+        except Exception as e:
+            logger.warning(f"Failed to emit progress via WebSocket: {e}")
 
     async def process_uploaded_file(
         self,
@@ -135,7 +153,7 @@ class DocumentProcessingService:
                 file_path.unlink()  # Clean up file on error
             return None, f"Error processing file: {str(e)}"
 
-    async def _process_document_async(self, document_id: int, file_path: Path, chunk_size: int = 2000):
+    async def _process_document_async(self, document_id: int, file_path: Path, chunk_size: int = 2000, is_recovery: bool = False):
         """
         Background task to process document content asynchronously
 
@@ -143,12 +161,16 @@ class DocumentProcessingService:
             document_id: Database ID of document to process
             file_path: Path to uploaded file
             chunk_size: Maximum characters per chunk (default: 2000)
+            is_recovery: True if this is a recovery operation (reprocessing stuck document)
         """
         start_time = datetime.now(timezone.utc)
         db = None
 
         try:
-            logger.info(f"🚀 Background task started for document {document_id}")
+            if is_recovery:
+                logger.info(f"🔄 RECOVERY: Reprocessing stuck document {document_id}")
+            else:
+                logger.info(f"🚀 Background task started for document {document_id}")
 
             # Get document from database (new session for background task)
             from core.database import get_db
@@ -181,7 +203,7 @@ class DocumentProcessingService:
             document.update_progress(5.0)
             db.commit()
 
-            structured_content = await self._extract_content(file_path, document.content_type)
+            structured_content = await self._extract_content(file_path, document.content_type, document_id)
 
             if not structured_content:
                 raise ValueError("Failed to extract content from file")
@@ -260,6 +282,61 @@ class DocumentProcessingService:
                     progress = 95.0 + (5.0 * (i + 1) / len(chunks_data))
                     document.update_progress(progress)
                     db.commit()
+
+            # 4.5. Build BM25 index for hybrid search
+            try:
+                logger.info(f"🔍 Building BM25 index for document {document_id}...")
+                from services.bm25_retriever import BM25Retriever
+
+                # Get all chunks we just stored
+                stored_chunks = db.query(Chunk).filter(
+                    Chunk.document_id == document_id
+                ).order_by(Chunk.chunk_order).all()
+
+                if stored_chunks:
+                    # Prepare documents for BM25 indexing
+                    bm25_documents = []
+                    for chunk in stored_chunks:
+                        bm25_documents.append({
+                            'chunk_id': chunk.id,
+                            'document_id': document_id,
+                            'content': chunk.content,
+                            'document_title': document.title
+                        })
+
+                    # Initialize BM25 retriever and index documents
+                    bm25 = BM25Retriever()
+                    bm25.index_documents(bm25_documents)
+
+                    # Save BM25 index per user
+                    index_dir = Path("data/bm25_indexes")
+                    index_dir.mkdir(parents=True, exist_ok=True)
+                    index_path = index_dir / f"user_{document.user_id}.pkl"
+
+                    # Load existing index if available, merge with new
+                    if index_path.exists():
+                        logger.info(f"📚 Merging with existing BM25 index for user {document.user_id}...")
+                        existing_bm25 = BM25Retriever()
+                        existing_bm25.load_index(str(index_path))
+
+                        # Merge with existing index - combine all documents
+                        all_documents = existing_bm25.corpus_metadata + bm25_documents
+
+                        # Rebuild index with all documents
+                        existing_bm25.index_documents(all_documents)
+                        existing_bm25.save_index(str(index_path))
+                        logger.info(f"✅ BM25 index updated: {len(all_documents)} total documents")
+                    else:
+                        logger.info(f"💾 Creating new BM25 index for user {document.user_id}...")
+                        bm25.save_index(str(index_path))
+                        logger.info(f"✅ BM25 index created: {len(bm25_documents)} documents")
+                else:
+                    logger.warning(f"⚠️ No chunks found for BM25 indexing")
+            except Exception as bm25_error:
+                logger.error(f"❌ Failed to build BM25 index: {bm25_error}")
+                # Continue processing - BM25 is optional
+                import traceback
+                logger.error(traceback.format_exc())
 
             # 5. Mark document as completed
             document.complete_processing(
@@ -521,8 +598,14 @@ class DocumentProcessingService:
             logger.error(f"Error parsing JSON file {file_path}: {e}")
             return None
 
-    async def _extract_content(self, file_path: Path, content_type: str) -> Optional[Dict]:
-        """Extract structured content from file using AsyncWebScraper"""
+    async def _extract_content(self, file_path: Path, content_type: str, document_id: int = 0) -> Optional[Dict]:
+        """Extract structured content from file using AsyncWebScraper
+
+        Args:
+            file_path: Path to the file to extract
+            content_type: MIME type of the content
+            document_id: Document ID for progress tracking (0 if not available yet)
+        """
         try:
             file_ext = file_path.suffix.lower()
 
@@ -567,9 +650,13 @@ class DocumentProcessingService:
                 
                 logger.info(f"🚀 Starting PDF processing for {file_path.name} (temp_id: {temp_doc_id})")
                 
-                # Process PDF with detailed error handling
+                # Process PDF with detailed error handling and progress tracking
                 try:
-                    result = await processor.process_pdf(file_path, temp_doc_id)
+                    # Create async progress callback that emits WebSocket events
+                    async def progress_callback(stage: str, pct: float):
+                        await self._emit_progress(document_id, stage, pct)
+
+                    result = await processor.process_pdf(file_path, temp_doc_id, progress_callback)
 
                     if result:
                         total_sections = result.get('total_sections', 0)
@@ -1404,6 +1491,61 @@ class DocumentProcessingService:
                     progress = 95.0 + (5.0 * (i + 1) / len(chunks_data))
                     document.update_progress(progress)
                     db.commit()
+
+            # 4.5. Build BM25 index for hybrid search
+            try:
+                logger.info(f"🔍 Building BM25 index for HTML documentation {document_id}...")
+                from services.bm25_retriever import BM25Retriever
+
+                # Get all chunks we just stored
+                stored_chunks = db.query(Chunk).filter(
+                    Chunk.document_id == document_id
+                ).order_by(Chunk.chunk_order).all()
+
+                if stored_chunks:
+                    # Prepare documents for BM25 indexing
+                    bm25_documents = []
+                    for chunk in stored_chunks:
+                        bm25_documents.append({
+                            'chunk_id': chunk.id,
+                            'document_id': document_id,
+                            'content': chunk.content,
+                            'document_title': document.title
+                        })
+
+                    # Initialize BM25 retriever and index documents
+                    bm25 = BM25Retriever()
+                    bm25.index_documents(bm25_documents)
+
+                    # Save BM25 index per user
+                    index_dir = Path("data/bm25_indexes")
+                    index_dir.mkdir(parents=True, exist_ok=True)
+                    index_path = index_dir / f"user_{document.user_id}.pkl"
+
+                    # Load existing index if available, merge with new
+                    if index_path.exists():
+                        logger.info(f"📚 Merging with existing BM25 index for user {document.user_id}...")
+                        existing_bm25 = BM25Retriever()
+                        existing_bm25.load_index(str(index_path))
+
+                        # Merge with existing index - combine all documents
+                        all_documents = existing_bm25.corpus_metadata + bm25_documents
+
+                        # Rebuild index with all documents
+                        existing_bm25.index_documents(all_documents)
+                        existing_bm25.save_index(str(index_path))
+                        logger.info(f"✅ BM25 index updated: {len(all_documents)} total documents")
+                    else:
+                        logger.info(f"💾 Creating new BM25 index for user {document.user_id}...")
+                        bm25.save_index(str(index_path))
+                        logger.info(f"✅ BM25 index created: {len(bm25_documents)} documents")
+                else:
+                    logger.warning(f"⚠️ No chunks found for BM25 indexing")
+            except Exception as bm25_error:
+                logger.error(f"❌ Failed to build BM25 index: {bm25_error}")
+                # Continue processing - BM25 is optional
+                import traceback
+                logger.error(traceback.format_exc())
 
             # 5. Mark document as completed
             document.complete_processing(

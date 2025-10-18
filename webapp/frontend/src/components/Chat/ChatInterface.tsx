@@ -545,10 +545,30 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ conversationId }) => {
     const useExpertPrompt = localStorage.getItem('useExpertPrompt');
     const customSystemPrompt = localStorage.getItem('customSystemPrompt');
 
+    // Get enhanced RAG settings from localStorage
+    const useReranker = localStorage.getItem('useReranker');
+    const useQueryExpansion = localStorage.getItem('useQueryExpansion');
+    const useHybridSearch = localStorage.getItem('useHybridSearch');
+    const promptTemplate = localStorage.getItem('promptTemplate');
+
+    // Parse settings
+    const enhancedRAGOptions = {
+      useReranker: useReranker !== null ? JSON.parse(useReranker) : true,
+      useQueryExpansion: useQueryExpansion !== null ? JSON.parse(useQueryExpansion) : false,
+      useHybridSearch: useHybridSearch !== null ? JSON.parse(useHybridSearch) : false,
+      promptTemplate: promptTemplate || null,
+    };
+
+    // Debug logging
+    console.log('🔍 Enhanced RAG Settings:', enhancedRAGOptions);
+    console.log('   localStorage values:', { useReranker, useQueryExpansion, useHybridSearch, promptTemplate });
+
     const success = await sendMessage(message, {
       ...configRef.current,
       useExpertPrompt: useExpertPrompt !== null ? JSON.parse(useExpertPrompt) : true,
       customSystemPrompt: customSystemPrompt || undefined,
+      // Enhanced RAG options
+      ...enhancedRAGOptions,
     });
 
     if (!success) {

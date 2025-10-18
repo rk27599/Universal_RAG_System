@@ -5,8 +5,10 @@ Supports dense, multi-vector, and sparse retrieval with 1024 dimensions
 
 import logging
 from typing import List, Optional, Dict
+from datetime import datetime
 import numpy as np
 import torch
+import gc
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +50,7 @@ class BGEEmbeddingService:
         self.use_fp16 = use_fp16
         self.model: Optional[BGEM3FlagModel] = None
         self._embedding_dim = 1024  # BGE-M3 fixed dimension
+        self.last_access_time: Optional[datetime] = None  # Track for idle unloading
 
         # Check for GPU availability
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -69,6 +72,8 @@ class BGEEmbeddingService:
                     devices=self.device  # Note: BGEM3FlagModel uses 'devices' not 'device'
                 )
 
+                self.last_access_time = datetime.now()  # Record load time
+
                 logger.info(f"✅ BGE-M3 model loaded successfully")
                 logger.info(f"📊 Embedding dimension: {self._embedding_dim}")
                 logger.info(f"💾 Device: {self.device}")
@@ -76,6 +81,65 @@ class BGEEmbeddingService:
             except Exception as e:
                 logger.error(f"❌ Failed to load BGE-M3 model: {e}")
                 raise RuntimeError(f"Failed to load BGE-M3 model: {e}")
+
+    def unload_model(self):
+        """Unload the BGE-M3 model to free memory"""
+        if self.model is not None:
+            logger.info(f"🔄 Unloading BGE-M3 model to free memory...")
+
+            # Delete model reference
+            del self.model
+            self.model = None
+
+            # Clear CUDA cache if using GPU
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                logger.debug("🧹 CUDA cache cleared")
+
+            # Force garbage collection
+            gc.collect()
+
+            # Clear access time
+            self.last_access_time = None
+
+            logger.info(f"✅ BGE-M3 model unloaded successfully")
+
+    def is_loaded(self) -> bool:
+        """Check if model is currently loaded"""
+        return self.model is not None
+
+    def get_optimal_batch_size(self, default: int = 12) -> int:
+        """
+        Get optimal batch size based on available memory
+
+        Args:
+            default: Default batch size
+
+        Returns:
+            Optimal batch size
+        """
+        try:
+            from utils.memory_manager import get_memory_manager
+            mm = get_memory_manager()
+            return mm.calculate_adaptive_batch_size(
+                default_batch_size=default,
+                model_name="BGE-M3"
+            )
+        except Exception as e:
+            logger.debug(f"Failed to get adaptive batch size: {e}")
+            return default
+
+    def _record_access(self):
+        """Record model access time (for idle tracking)"""
+        self.last_access_time = datetime.now()
+
+        # Also record in memory manager for centralized tracking
+        try:
+            from utils.memory_manager import get_memory_manager
+            mm = get_memory_manager()
+            mm.record_model_access("BGE-M3")
+        except Exception:
+            pass  # Silently ignore if memory manager not available
 
     @property
     def embedding_dimension(self) -> int:
@@ -102,6 +166,9 @@ class BGEEmbeddingService:
             if self.model is None:
                 self.load_model()
 
+            # Record access for idle tracking
+            self._record_access()
+
             # BGE-M3 encode returns dict with 'dense_vecs', 'lexical_weights', 'colbert_vecs'
             result = self.model.encode(
                 [text],  # BGE-M3 expects list
@@ -124,7 +191,7 @@ class BGEEmbeddingService:
     def generate_embeddings_batch(
         self,
         texts: List[str],
-        batch_size: int = 12,
+        batch_size: Optional[int] = None,
         show_progress: bool = False
     ) -> List[Optional[List[float]]]:
         """
@@ -132,7 +199,7 @@ class BGEEmbeddingService:
 
         Args:
             texts: List of texts to embed
-            batch_size: Batch size for processing (default: 12 for BGE-M3)
+            batch_size: Batch size for processing (None = adaptive, default: 12 for BGE-M3)
             show_progress: Show progress bar
 
         Returns:
@@ -145,6 +212,15 @@ class BGEEmbeddingService:
             # Ensure model is loaded
             if self.model is None:
                 self.load_model()
+
+            # Record access for idle tracking
+            self._record_access()
+
+            # Use adaptive batch sizing if not specified
+            if batch_size is None:
+                batch_size = self.get_optimal_batch_size(default=12)
+                if show_progress:
+                    logger.info(f"📊 Using adaptive batch size: {batch_size}")
 
             # Filter empty texts
             valid_indices = [i for i, t in enumerate(texts) if t and t.strip()]
@@ -195,13 +271,13 @@ class BGEEmbeddingService:
         """
         return self.generate_embedding(query)
 
-    def encode_documents(self, documents: List[str], batch_size: int = 12) -> List[Optional[List[float]]]:
+    def encode_documents(self, documents: List[str], batch_size: Optional[int] = None) -> List[Optional[List[float]]]:
         """
         Encode multiple documents for indexing
 
         Args:
             documents: List of document texts
-            batch_size: Processing batch size
+            batch_size: Processing batch size (None = adaptive)
 
         Returns:
             List of document embedding vectors
@@ -211,7 +287,7 @@ class BGEEmbeddingService:
     async def generate_embeddings_batch_async(
         self,
         texts: List[str],
-        batch_size: int = 12,
+        batch_size: Optional[int] = None,
         show_progress: bool = False
     ) -> List[Optional[List[float]]]:
         """
@@ -220,7 +296,7 @@ class BGEEmbeddingService:
 
         Args:
             texts: List of texts to embed
-            batch_size: Batch size for processing
+            batch_size: Batch size for processing (None = adaptive)
             show_progress: Show progress logging
 
         Returns:

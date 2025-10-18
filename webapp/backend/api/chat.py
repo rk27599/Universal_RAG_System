@@ -136,6 +136,12 @@ class ChatRequest(BaseModel):
     useRAG: bool = True
     topK: Optional[int] = 20
     documentIds: Optional[List[str]] = None
+    # Enhanced RAG features (optional)
+    useReranker: Optional[bool] = True  # ✅ Enabled (model downloaded)
+    useHybridSearch: Optional[bool] = False  # Disabled until BM25 index is built
+    useQueryExpansion: Optional[bool] = False  # Disabled by default (requires Ollama)
+    useCorrectiveRAG: Optional[bool] = False
+    promptTemplate: Optional[str] = None  # Options: "cot", "extractive", "citation"
 
 
 class CreateConversationRequest(BaseModel):
@@ -183,42 +189,109 @@ async def send_message(
         # Retrieve document context if RAG is enabled
         document_sources = []
         context = None
+        pipeline_info = None
 
         if request.useRAG:
             try:
                 from services.document_service import DocumentProcessingService
+                from services.enhanced_search_service import EnhancedSearchService
+
                 doc_service = DocumentProcessingService(db, user_id=current_user.id)
 
-                # Search for relevant document chunks with quality threshold
-                search_results = await doc_service.search_documents(
-                    query=request.content,
-                    top_k=request.topK,  # User-configurable source count
-                    document_ids=request.documentIds,
-                    min_similarity=0.70  # Higher threshold for better quality (0.65 = 65% similarity minimum)
+                # Initialize enhanced search service with optional features
+                enhanced_search = EnhancedSearchService(
+                    document_service=doc_service,
+                    enable_reranker=request.useReranker,
+                    enable_hybrid_search=request.useHybridSearch,
+                    enable_query_expansion=request.useQueryExpansion,
+                    enable_corrective_rag=request.useCorrectiveRAG,
+                    enable_web_search=False  # Keep disabled for privacy
                 )
 
-                # Build document context and sources
-                if search_results:
-                    doc_parts = []
-                    for result in search_results:
-                        doc_parts.append(
-                            f"Document: {result['document_title']}\n"
-                            f"Section: {result.get('section_path', 'N/A')}\n"
-                            f"{result['content']}"
-                        )
+                # Use enhanced search with prompt template if specified
+                if request.promptTemplate:
+                    search_result = await enhanced_search.search_with_template(
+                        query=request.content,
+                        template=request.promptTemplate,
+                        top_k=request.topK,
+                        document_ids=request.documentIds,
+                        min_similarity=0.1  # Lower threshold for reranker
+                    )
+                    # Use the pre-built prompt with context
+                    context = search_result.get('prompt')
+                    search_results = search_result.get('results', [])
+                    pipeline_info = search_result.get('pipeline_info')
+                else:
+                    # Standard enhanced search
+                    search_result = await enhanced_search.search(
+                        query=request.content,
+                        top_k=request.topK,
+                        document_ids=request.documentIds,
+                        min_similarity=0.1  # Lower threshold for reranker
+                    )
+                    search_results = search_result.get('results', [])
+                    pipeline_info = search_result.get('pipeline_info')
 
+                    # Build context from results
+                    if search_results:
+                        doc_parts = []
+                        for result in search_results:
+                            doc_parts.append(
+                                f"Document: {result['document_title']}\n"
+                                f"Section: {result.get('section_path', 'N/A')}\n"
+                                f"{result['content']}"
+                            )
+                        context = "\n\n---\n\n".join(doc_parts)
+
+                # Build document sources metadata
+                if search_results:
+                    for result in search_results:
                         document_sources.append({
                             'documentId': result['document_id'],
                             'documentTitle': result['document_title'],
                             'section': result.get('section_path', 'N/A'),
-                            'similarity': result['similarity'],
+                            'similarity': result.get('similarity'),
+                            'rerankerScore': result.get('reranker_score'),
                             'chunkId': result['chunk_id']
                         })
 
-                    context = "\n\n---\n\n".join(doc_parts)
-                    logger.info(f"Retrieved {len(search_results)} document chunks for RAG")
+                    logger.info(f"Retrieved {len(search_results)} document chunks using enhanced search")
+                    if pipeline_info:
+                        logger.info(f"Pipeline: {pipeline_info.get('retrieval_method')}, "
+                                  f"reranking={pipeline_info.get('reranking_applied')}, "
+                                  f"expansion={len(pipeline_info.get('expanded_queries', []))}")
+
             except Exception as e:
                 logger.error(f"Error retrieving document context: {e}")
+                # Fallback to basic search on error
+                try:
+                    from services.document_service import DocumentProcessingService
+                    doc_service = DocumentProcessingService(db, user_id=current_user.id)
+                    search_results = await doc_service.search_documents(
+                        query=request.content,
+                        top_k=request.topK,
+                        document_ids=request.documentIds,
+                        min_similarity=0.1  # Lower threshold for reranker fallback
+                    )
+                    if search_results:
+                        doc_parts = []
+                        for result in search_results:
+                            doc_parts.append(
+                                f"Document: {result['document_title']}\n"
+                                f"Section: {result.get('section_path', 'N/A')}\n"
+                                f"{result['content']}"
+                            )
+                            document_sources.append({
+                                'documentId': result['document_id'],
+                                'documentTitle': result['document_title'],
+                                'section': result.get('section_path', 'N/A'),
+                                'similarity': result['similarity'],
+                                'chunkId': result['chunk_id']
+                            })
+                        context = "\n\n---\n\n".join(doc_parts)
+                        logger.info(f"Fallback: Retrieved {len(search_results)} chunks with basic search")
+                except Exception as fallback_error:
+                    logger.error(f"Fallback search also failed: {fallback_error}")
 
         # Generate response with context
         try:
@@ -285,21 +358,34 @@ async def send_message(
         db.refresh(assistant_message)
 
         # Return response
+        response_metadata = {
+            "model": request.model,
+            "responseTime": response_time,
+            "tokenCount": assistant_message.token_count,
+            "similarity": assistant_message.similarity_score,
+            "useRAG": request.useRAG,
+            "temperature": request.temperature,
+            "maxTokens": request.maxTokens,
+            "sources": document_sources if document_sources else None
+        }
+
+        # Add enhanced RAG pipeline info if available
+        if pipeline_info:
+            response_metadata["pipelineInfo"] = {
+                "retrievalMethod": pipeline_info.get('retrieval_method'),
+                "rerankingApplied": pipeline_info.get('reranking_applied'),
+                "queryExpanded": len(pipeline_info.get('expanded_queries', [])) > 0,
+                "expandedQueries": pipeline_info.get('expanded_queries', []),
+                "correctiveApplied": pipeline_info.get('corrective_applied'),
+                "webSearchUsed": pipeline_info.get('web_search_used')
+            }
+
         response_message = {
             "id": str(assistant_message.id),
             "role": "assistant",
             "content": ai_response,
             "timestamp": assistant_message.created_at.isoformat(),
-            "metadata": {
-                "model": request.model,
-                "responseTime": response_time,
-                "tokenCount": assistant_message.token_count,
-                "similarity": assistant_message.similarity_score,
-                "useRAG": request.useRAG,
-                "temperature": request.temperature,
-                "maxTokens": request.maxTokens,
-                "sources": document_sources if document_sources else None
-            }
+            "metadata": response_metadata
         }
 
         return {
@@ -760,11 +846,22 @@ async def send_message(sid, data):
             use_rag = data.get('useRAG', False)
             document_ids = data.get('documentIds', [])
 
+            # Enhanced RAG options
+            use_reranker = data.get('useReranker', True)  # ✅ Enabled (model downloaded)
+            use_hybrid_search = data.get('useHybridSearch', False)  # Requires BM25 index
+            use_query_expansion = data.get('useQueryExpansion', False)  # Requires Ollama
+            use_corrective_rag = data.get('useCorrectiveRAG', False)
+            prompt_template = data.get('promptTemplate', None)
+
             logger.info(f"🔍 RAG Debug: useRAG={use_rag}, documentIds={document_ids}")
+            logger.info(f"🔍 Enhanced RAG received: reranker={use_reranker}, hybrid={use_hybrid_search}, "
+                       f"expansion={use_query_expansion}, corrective={use_corrective_rag}, template={prompt_template}")
 
             if use_rag:
                 try:
                     from services.document_service import DocumentProcessingService
+                    from services.enhanced_search_service import EnhancedSearchService
+
                     doc_service = DocumentProcessingService(db, user_id=user_id)
 
                     # If no specific documents selected, use None to search all user documents
@@ -780,18 +877,46 @@ async def send_message(sid, data):
                         logger.warning(f"⚠️ User {connected_clients[sid]['username']} has no completed documents in database")
                         search_results = []
                     else:
-                        # Search for relevant document chunks with quality threshold
-                        logger.info(f"🔍 Searching {doc_count} documents with top_k={top_k}, document_ids={search_doc_ids}")
-                        search_results = await doc_service.search_documents(
-                            query=content,
-                            top_k=top_k,  # User-configurable source count
-                            document_ids=search_doc_ids,
-                            min_similarity=0.70  # Higher threshold for better quality (0.65 = 65% similarity minimum)
+                        # Initialize enhanced search service
+                        enhanced_search = EnhancedSearchService(
+                            document_service=doc_service,
+                            enable_reranker=use_reranker,
+                            enable_hybrid_search=use_hybrid_search,
+                            enable_query_expansion=use_query_expansion,
+                            enable_corrective_rag=use_corrective_rag,
+                            enable_web_search=False  # Keep disabled for privacy
                         )
-                        logger.info(f"📊 Search returned {len(search_results) if search_results else 0} results")
+
+                        logger.info(f"🔍 Enhanced search with {doc_count} documents: "
+                                  f"reranker={use_reranker}, hybrid={use_hybrid_search}, "
+                                  f"expansion={use_query_expansion}, corrective={use_corrective_rag}")
+
+                        # Use enhanced search with prompt template if specified
+                        if prompt_template:
+                            search_result = await enhanced_search.search_with_template(
+                                query=content,
+                                template=prompt_template,
+                                top_k=top_k,
+                                document_ids=search_doc_ids,
+                                min_similarity=0.1  # Lower threshold for reranker
+                            )
+                            # Use pre-built prompt with context
+                            document_context = search_result.get('prompt')
+                            search_results = search_result.get('results', [])
+                        else:
+                            # Standard enhanced search
+                            search_result = await enhanced_search.search(
+                                query=content,
+                                top_k=top_k,
+                                document_ids=search_doc_ids,
+                                min_similarity=0.1  # Lower threshold for reranker
+                            )
+                            search_results = search_result.get('results', [])
+
+                        logger.info(f"📊 Enhanced search returned {len(search_results)} results")
 
                     # Build document context from search results
-                    if search_results:
+                    if search_results and not prompt_template:
                         doc_parts = []
                         for result in search_results:
                             doc_parts.append(
@@ -799,21 +924,53 @@ async def send_message(sid, data):
                                 f"Section: {result.get('section_path', 'N/A')}\n"
                                 f"{result['content']}"
                             )
+                        document_context = "\n\n---\n\n".join(doc_parts)
 
-                            # Store source metadata for response
+                    # Store source metadata for response
+                    if search_results:
+                        for result in search_results:
                             document_sources.append({
                                 'documentId': result['document_id'],
                                 'documentTitle': result['document_title'],
                                 'section': result.get('section_path', 'N/A'),
-                                'similarity': result['similarity'],
+                                'similarity': result.get('similarity'),
+                                'rerankerScore': result.get('reranker_score'),
                                 'chunkId': result['chunk_id']
                             })
 
-                        document_context = "\n\n---\n\n".join(doc_parts)
                         logger.info(f"Retrieved {len(search_results)} document chunks for RAG")
                 except Exception as e:
                     logger.error(f"Error retrieving document context: {e}")
-                    # Continue without document context
+                    # Fallback to basic search
+                    try:
+                        from services.document_service import DocumentProcessingService
+                        doc_service = DocumentProcessingService(db, user_id=user_id)
+                        search_doc_ids = document_ids if document_ids else None
+                        search_results = await doc_service.search_documents(
+                            query=content,
+                            top_k=top_k,
+                            document_ids=search_doc_ids,
+                            min_similarity=0.1  # Lower threshold for reranker fallback
+                        )
+                        if search_results:
+                            doc_parts = []
+                            for result in search_results:
+                                doc_parts.append(
+                                    f"Document: {result['document_title']}\n"
+                                    f"Section: {result.get('section_path', 'N/A')}\n"
+                                    f"{result['content']}"
+                                )
+                                document_sources.append({
+                                    'documentId': result['document_id'],
+                                    'documentTitle': result['document_title'],
+                                    'section': result.get('section_path', 'N/A'),
+                                    'similarity': result['similarity'],
+                                    'chunkId': result['chunk_id']
+                                })
+                            document_context = "\n\n---\n\n".join(doc_parts)
+                            logger.info(f"Fallback: Retrieved {len(search_results)} chunks")
+                    except Exception as fallback_error:
+                        logger.error(f"Fallback search failed: {fallback_error}")
 
             # Combine conversation history and document context
             full_context_parts = []

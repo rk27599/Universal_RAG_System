@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     ALLOWED_FILE_TYPES: set = {".pdf", ".html", ".txt", ".md", ".docx"}
 
     # Vector storage settings
-    VECTOR_DIMENSION: int = 1536  # For sentence-transformers models
+    VECTOR_DIMENSION: int = 1024  # For BGE-M3 embeddings (BAAI/bge-m3)
     MAX_CHUNKS_PER_DOCUMENT: int = 1000
 
     # Chat settings

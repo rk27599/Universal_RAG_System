@@ -22,6 +22,84 @@ from api import auth, documents, chat, models as model_api
 # Initialize settings
 settings = Settings()
 
+# Background task for automatic model unloading
+async def auto_unload_idle_models():
+    """Background task to unload idle models and free memory"""
+    import asyncio
+    import logging
+    from utils.memory_manager import get_memory_manager
+
+    logger = logging.getLogger(__name__)
+    mm = get_memory_manager(idle_timeout=300, enable_auto_unload=True)  # 5 minutes
+
+    logger.info("🧹 Auto-unload background task started (checking every 60s)")
+
+    while True:
+        try:
+            await asyncio.sleep(60)  # Check every 60 seconds
+
+            # Log memory status
+            mm.log_memory_status()
+
+            # Check memory health
+            health = mm.check_memory_health()
+            if health['status'] in ['warning', 'critical']:
+                logger.warning(f"⚠️ Memory health: {health['status']} - {health['free_ram_gb']:.1f}GB free")
+                for rec in health['recommendations']:
+                    logger.warning(f"  💡 {rec}")
+
+            # Get idle models
+            idle_models = mm.get_idle_models()
+
+            if idle_models:
+                logger.info(f"🔍 Found {len(idle_models)} idle model(s)")
+
+                # Try to get model services
+                try:
+                    from services.embedding_service_bge import BGEEmbeddingService
+                    from services.reranker_service import RerankerService
+                    from services.document_service import embedding_service, reranker_service
+
+                    models_unloaded = []
+
+                    # Check BGE embedding service
+                    if embedding_service and embedding_service.is_loaded():
+                        if mm.should_unload_model("BGE-M3"):
+                            logger.info("🔄 Unloading idle BGE-M3 embedding model...")
+                            embedding_service.unload_model()
+                            mm.cleanup_after_unload("BGE-M3")
+                            models_unloaded.append("BGE-M3")
+
+                    # Check reranker service
+                    if reranker_service and reranker_service.is_loaded():
+                        if mm.should_unload_model("BGE-Reranker"):
+                            logger.info("🔄 Unloading idle BGE-Reranker model...")
+                            reranker_service.unload_model()
+                            mm.cleanup_after_unload("BGE-Reranker")
+                            models_unloaded.append("BGE-Reranker")
+
+                    if models_unloaded:
+                        # Log memory savings
+                        stats_after = mm.get_memory_stats()
+                        logger.info(
+                            f"✅ Unloaded {len(models_unloaded)} model(s): {', '.join(models_unloaded)}"
+                        )
+                        logger.info(f"💾 Free RAM after unload: {stats_after['free_ram_gb']:.1f}GB")
+
+                except ImportError as e:
+                    logger.debug(f"Could not import model services: {e}")
+                except Exception as e:
+                    logger.error(f"Error during model unloading: {e}")
+
+        except asyncio.CancelledError:
+            logger.info("🛑 Auto-unload task cancelled")
+            break
+        except Exception as e:
+            logger.error(f"❌ Error in auto-unload task: {e}")
+            # Continue running even if one iteration fails
+
+    logger.info("✅ Auto-unload background task stopped")
+
 # Lifespan context manager for startup/shutdown
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -54,14 +132,39 @@ async def lifespan(app: FastAPI):
         print(f"⚠️  Security validation error: {e}")
         raise
 
+    # Document recovery: Resume processing for stuck documents
+    print("🔄 Checking for stuck documents...")
+    try:
+        from services.document_recovery_service import recover_all_stuck_documents
+        recovered_count = await recover_all_stuck_documents()
+        if recovered_count > 0:
+            print(f"✅ Recovered {recovered_count} stuck document(s) - processing resumed")
+        else:
+            print("✅ No stuck documents found")
+    except Exception as e:
+        print(f"⚠️  Document recovery warning: {e}")
+        # Don't fail startup if recovery fails - log and continue
+
     print("🔒 Secure RAG System started successfully")
     print(f"🏠 Local hosting mode: {settings.HOST}:{settings.PORT}")
     print("🚫 No external dependencies loaded")
+
+    # Start background task for automatic model unloading
+    import asyncio
+    unload_task = asyncio.create_task(auto_unload_idle_models())
+    print("🧹 Started background task for automatic model unloading (5min idle timeout)")
 
     yield
 
     # Shutdown
     print("👋 Shutting down Secure RAG System...")
+
+    # Cancel background task
+    unload_task.cancel()
+    try:
+        await unload_task
+    except asyncio.CancelledError:
+        print("✅ Background tasks cancelled")
 
 # Create FastAPI app with security-focused configuration and lifespan
 app = FastAPI(

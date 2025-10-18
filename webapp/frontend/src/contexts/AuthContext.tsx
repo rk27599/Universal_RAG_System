@@ -36,7 +36,7 @@ type AuthAction =
 
 const initialState: AuthState = {
   user: null,
-  isLoading: false,
+  isLoading: true, // Start as loading while checking auth status
   isAuthenticated: false,
   error: null,
 };
@@ -108,41 +108,47 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   useEffect(() => {
     const checkAuthStatus = async (retries = 3, delay = 1000) => {
       const token = localStorage.getItem('authToken');
-      if (token) {
-        dispatch({ type: 'AUTH_START' });
 
-        for (let attempt = 0; attempt < retries; attempt++) {
-          try {
-            // Add per-request timeout
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 5000);
+      // If no token exists, immediately exit loading state
+      if (!token) {
+        dispatch({ type: 'AUTH_FAILURE', payload: '' }); // Empty error for clean state
+        return;
+      }
 
-            const response = await apiService.getCurrentUser();
-            clearTimeout(timeoutId);
+      // Token exists - verify it with the backend
+      dispatch({ type: 'AUTH_START' });
 
-            if (response.success && response.data) {
-              dispatch({ type: 'AUTH_SUCCESS', payload: response.data });
-              return; // Success - exit retry loop
-            } else {
-              localStorage.removeItem('authToken');
-              dispatch({ type: 'AUTH_FAILURE', payload: 'Invalid session' });
-              return;
-            }
-          } catch (error: any) {
-            console.warn(`Auth check attempt ${attempt + 1}/${retries} failed:`, error.message);
+      for (let attempt = 0; attempt < retries; attempt++) {
+        try {
+          // Add per-request timeout
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-            if (attempt < retries - 1) {
-              // Wait before retrying (exponential backoff)
-              await new Promise(resolve => setTimeout(resolve, delay * (attempt + 1)));
-            } else {
-              // Final attempt failed
-              console.error('Auth check failed after all retries');
-              localStorage.removeItem('authToken');
-              dispatch({
-                type: 'AUTH_FAILURE',
-                payload: 'Cannot connect to server - please check if backend is running'
-              });
-            }
+          const response = await apiService.getCurrentUser();
+          clearTimeout(timeoutId);
+
+          if (response.success && response.data) {
+            dispatch({ type: 'AUTH_SUCCESS', payload: response.data });
+            return; // Success - exit retry loop
+          } else {
+            localStorage.removeItem('authToken');
+            dispatch({ type: 'AUTH_FAILURE', payload: 'Invalid session' });
+            return;
+          }
+        } catch (error: any) {
+          console.warn(`Auth check attempt ${attempt + 1}/${retries} failed:`, error.message);
+
+          if (attempt < retries - 1) {
+            // Wait before retrying (exponential backoff)
+            await new Promise(resolve => setTimeout(resolve, delay * (attempt + 1)));
+          } else {
+            // Final attempt failed
+            console.error('Auth check failed after all retries');
+            localStorage.removeItem('authToken');
+            dispatch({
+              type: 'AUTH_FAILURE',
+              payload: 'Cannot connect to server - please check if backend is running'
+            });
           }
         }
       }
