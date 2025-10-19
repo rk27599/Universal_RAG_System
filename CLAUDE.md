@@ -82,7 +82,7 @@ jupyter lab notebooks/RAG_HTML.ipynb
 ```
 
 ### Python Environment
-- Python 3.12+ (✅ Migrated from 3.10 - October 2025)
+- Python 3.12+ (✅ Migrated from 3.10 - October 2024)
 - PyTorch 2.6.0+cu124 (✅ Required for BGE-M3 embeddings)
 - CUDA 12.4+ (for GPU acceleration)
 - Core dependencies: requests, sklearn, beautifulsoup4, numpy, pickle
@@ -329,6 +329,7 @@ webapp/
 │   │   ├── document_service.py          # Document processing w/ progress
 │   │   ├── embedding_service_bge.py     # BGE-M3 embeddings (1024-dim)
 │   │   ├── pdf_processor.py             # Advanced PDF processing
+│   │   ├── redis_service.py             # Redis WebSocket session management
 │   │   ├── enhanced_search_service.py   # 🆕 Unified enhanced RAG
 │   │   ├── reranker_service.py          # 🆕 Cross-encoder reranking
 │   │   ├── bm25_retriever.py            # 🆕 BM25 keyword search

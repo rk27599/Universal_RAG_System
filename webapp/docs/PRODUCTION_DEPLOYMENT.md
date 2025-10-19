@@ -2,7 +2,7 @@
 
 **Secure RAG System - Production Deployment Documentation**
 
-Last Updated: 2025-10-09
+Last Updated: 2024-10-09
 
 ---
 
@@ -578,5 +578,5 @@ psql -U rag_user -d rag_database -h localhost
 
 ---
 
-Last Updated: 2025-10-09
+Last Updated: 2024-10-09
 Version: 1.0

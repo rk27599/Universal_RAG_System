@@ -52,4 +52,4 @@ The web application uses the core RAG library from `../../src/`. For core librar
 
 ---
 
-*Last updated: October 2025*
+*Last updated: October 2024*
