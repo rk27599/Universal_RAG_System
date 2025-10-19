@@ -238,8 +238,11 @@ VLLM_BASE_URL=http://localhost:8001
 ```
 
 **Setup Guides:**
-- [docs/VLLM_SETUP.md](docs/VLLM_SETUP.md) - Complete vLLM guide
-- [docs/VLLM_INSTALLATION_FIX.md](docs/VLLM_INSTALLATION_FIX.md) - Installation troubleshooting
+- [webapp/docs/VLLM_COMPLETE_GUIDE.md](webapp/docs/VLLM_COMPLETE_GUIDE.md) - Complete vLLM guide with architecture & usage
+- [webapp/docs/VLLM_INSTALLATION.md](webapp/docs/VLLM_INSTALLATION.md) - Installation (Docker, native, conda)
+- [webapp/docs/VLLM_TROUBLESHOOTING.md](webapp/docs/VLLM_TROUBLESHOOTING.md) - Common issues & solutions
+- [webapp/docs/VLLM_SETUP.md](webapp/docs/VLLM_SETUP.md) - Quick setup reference (legacy)
+- [webapp/docs/VLLM_INSTALLATION_FIX.md](webapp/docs/VLLM_INSTALLATION_FIX.md) - Legacy installation fixes
 
 **💡 Recommendation:** Start with Ollama for development. Switch to vLLM (Docker) when you need production-scale multi-user performance.
 
@@ -408,7 +411,10 @@ webapp/
 │   │   ├── web_search_fallback.py       # 🆕 External knowledge fallback
 │   │   ├── document_recovery_service.py # 🆕 Document repair/recovery
 │   │   ├── rag_service.py               # RAG retrieval orchestration
-│   │   └── ollama_service.py            # LLM integration
+│   │   ├── llm_base.py                  # 🆕 LLM abstract interface
+│   │   ├── llm_factory.py               # 🆕 LLM provider factory (Ollama/vLLM)
+│   │   ├── ollama_service.py            # Ollama LLM integration
+│   │   └── vllm_service.py              # 🆕 vLLM high-performance integration
 │   │
 │   ├── utils/                      # Utility modules
 │   │   ├── async_web_scraper.py   # HTML content extraction
@@ -486,6 +492,7 @@ webapp/
     ├── deploy.sh                   # Deployment automation
     ├── backup.sh                   # Database backup
     ├── setup_ollama.sh             # Ollama setup
+    ├── setup_vllm.sh               # 🆕 vLLM server startup script
     └── security_validator.py       # Security checks
 ```
 

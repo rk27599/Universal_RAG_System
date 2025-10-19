@@ -9,7 +9,7 @@ A production-ready **Retrieval-Augmented Generation (RAG) web application** with
 - **📄 Advanced Document Processing**: Upload HTML, PDF, TXT files with async processing + real-time progress tracking
 - **🧠 BGE-M3 Embeddings**: State-of-the-art 1024-dim embeddings (16x larger context window than MiniLM)
 - **💬 Real-Time Chat**: WebSocket-based chat with streaming responses and Redis session management
-- **🤖 Local LLM Integration**: Ollama integration (Mistral, Llama2, CodeLlama) with configurable system prompts
+- **🤖 Local LLM Integration**: Dual provider support (Ollama + vLLM) for Mistral, Llama2, CodeLlama with configurable system prompts
 - **📊 Rich Metadata**: Track sources, sections, and similarity scores
 - **🎨 Modern UI**: React + TypeScript + Material-UI frontend
 - **⚡ High Performance**: Async document processing, connection pooling, memory optimization
@@ -65,11 +65,23 @@ npm install
 npm start  # Development server on http://localhost:3000
 ```
 
-### 4. Start Ollama (Optional but Recommended)
+### 4. Start LLM Provider
+
+**Option A: Ollama (Default - Recommended for Development)**
 ```bash
 # Install from https://ollama.ai
 ollama serve
 ollama pull mistral
+```
+
+**Option B: vLLM (Advanced - For Multi-User Production)**
+```bash
+# See VLLM_INSTALLATION.md for detailed setup
+# Requires CUDA-capable GPU
+docker pull vllm/vllm-openai:latest
+docker run --gpus all -p 8001:8000 --ipc=host \
+    vllm/vllm-openai:latest \
+    --model mistralai/Mistral-7B-Instruct-v0.2
 ```
 
 ### 5. Run Application
@@ -229,7 +241,7 @@ Access the application at **http://localhost:3000**
 - **Vector Search**: PostgreSQL pgvector with HNSW indexing (50x faster)
 - **RAG System**: TF-IDF retrieval, semantic search, context building
 - **Chat API**: WebSocket real-time messaging, conversation management
-- **LLM Integration**: Ollama API for Mistral, Llama2, CodeLlama
+- **LLM Integration**: Dual provider support (Ollama/vLLM) for Mistral, Llama2, CodeLlama with factory pattern
 
 ### Frontend (React + TypeScript)
 - **Auth UI**: Login, registration, password validation
@@ -273,6 +285,9 @@ Access the application at **http://localhost:3000**
 - [Features Guide](webapp/docs/FEATURES_GUIDE.md) - 🆕 Complete RAG features overview
 - [BGE-M3 Migration Guide](webapp/docs/BGE_M3_MIGRATION_GUIDE.md) - 🆕 Embedding migration
 - [Enhanced Search Integration](webapp/backend/docs/ENHANCED_SEARCH_INTEGRATION.md) - 🆕 Technical details
+- [vLLM Complete Guide](webapp/docs/VLLM_COMPLETE_GUIDE.md) - 🆕 Multi-user production LLM setup
+- [vLLM Installation](webapp/docs/VLLM_INSTALLATION.md) - 🆕 Docker, native, conda installations
+- [vLLM Troubleshooting](webapp/docs/VLLM_TROUBLESHOOTING.md) - 🆕 Common issues & solutions
 
 ### Deployment
 - [Network Setup](webapp/docs/NETWORK_SETUP.md) - LAN access configuration
@@ -347,9 +362,17 @@ DEBUG=False  # Set to True for development
 SECRET_KEY=<generate-secure-key>
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 
-# Ollama
+# LLM Provider (choose one)
+LLM_PROVIDER=ollama  # Options: "ollama" (default), "vllm"
+
+# Ollama (default)
 OLLAMA_BASE_URL=http://localhost:11434
 DEFAULT_MODEL=mistral
+
+# vLLM (optional - for multi-user production)
+VLLM_BASE_URL=http://localhost:8001
+VLLM_GPU_COUNT=1
+VLLM_TENSOR_PARALLEL_SIZE=1
 
 # Server
 HOST=127.0.0.1
@@ -384,7 +407,13 @@ CREATE EXTENSION IF NOT EXISTS vector;
 
 See [webapp setup scripts](webapp/backend/scripts/) for automated setup.
 
-## 🤖 Ollama Setup
+## 🤖 LLM Provider Setup
+
+The RAG system supports two LLM providers with easy switching via configuration:
+
+### Ollama (Default)
+
+**Best for:** Development, single-user, simple setup
 
 ```bash
 # Install Ollama
@@ -398,6 +427,68 @@ ollama pull mistral
 ollama pull llama2
 ollama pull codellama
 ```
+
+**Features:**
+- ✅ Simple one-command setup
+- ✅ Automatic model management
+- ✅ Good for development and low-concurrency
+- ✅ Works on systems with limited GPU resources
+
+---
+
+### vLLM (Advanced - Optional)
+
+**Best for:** Production, multi-user (5+), multi-GPU servers
+
+**Why vLLM?**
+- 🚀 **8-100x faster** for concurrent requests
+- 🔥 **Parallel batching** (vs Ollama's serial processing)
+- 💪 **Multi-GPU tensor parallelism**
+- ⚡ **Production-scale throughput**
+
+**Quick Start (Docker):**
+```bash
+# Pull official vLLM image
+docker pull vllm/vllm-openai:latest
+
+# Run vLLM server (single GPU)
+docker run --gpus all -p 8001:8000 --ipc=host \
+    vllm/vllm-openai:latest \
+    --model mistralai/Mistral-7B-Instruct-v0.2 \
+    --host 0.0.0.0 --port 8000
+
+# Switch to vLLM in .env
+LLM_PROVIDER=vllm
+VLLM_BASE_URL=http://localhost:8001
+```
+
+**Documentation:**
+- 📖 [Complete Guide](webapp/docs/VLLM_COMPLETE_GUIDE.md) - Architecture, usage, tuning
+- 🔧 [Installation](webapp/docs/VLLM_INSTALLATION.md) - Docker, native, conda setups
+- 🐛 [Troubleshooting](webapp/docs/VLLM_TROUBLESHOOTING.md) - Common issues & solutions
+
+**Comparison:**
+
+| Feature | Ollama | vLLM |
+|---------|--------|------|
+| Setup | Simple (one command) | Moderate (requires config) |
+| Single User | Fast ✅ | Fast ✅ |
+| 10 Concurrent Users | Slow (serialized) | **8-10x faster** 🚀 |
+| Multi-GPU | Limited | Excellent ✅ |
+| Model Management | Automatic | Manual (Hugging Face) |
+
+**Switching Providers:**
+```bash
+# No code changes required! Just update .env
+
+# Use Ollama (default)
+LLM_PROVIDER=ollama
+
+# Use vLLM
+LLM_PROVIDER=vllm
+```
+
+For detailed vLLM setup, performance tuning, and multi-GPU configuration, see [VLLM_COMPLETE_GUIDE.md](webapp/docs/VLLM_COMPLETE_GUIDE.md).
 
 ## 📝 API Endpoints
 
