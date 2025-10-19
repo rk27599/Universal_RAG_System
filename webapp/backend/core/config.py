@@ -34,10 +34,19 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql://rag_user:secure_rag_password_2024@localhost:5432/rag_database"
     DATABASE_ECHO: bool = False  # Set to True for SQL debugging
 
+    # LLM Provider settings - LOCAL ONLY
+    LLM_PROVIDER: str = "ollama"  # Options: "ollama", "vllm"
+
     # Ollama settings - LOCAL ONLY
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     DEFAULT_MODEL: str = "mistral"
     AVAILABLE_MODELS: list = ["mistral", "llama2", "codellama"]
+
+    # vLLM settings - LOCAL ONLY (High-performance multi-GPU inference)
+    VLLM_BASE_URL: str = "http://localhost:8001"
+    VLLM_MODEL_PATH: str = "/models"  # Path to vLLM models
+    VLLM_GPU_COUNT: int = 1  # Number of GPUs available
+    VLLM_TENSOR_PARALLEL_SIZE: int = 1  # Tensor parallelism size (1-8, must divide GPU count)
 
     # File storage settings - LOCAL ONLY
     UPLOAD_DIR: str = "./data/uploads"
@@ -90,6 +99,23 @@ class Settings(BaseSettings):
         if "localhost" not in v and "127.0.0.1" not in v:
             raise ValueError("Ollama must be localhost for security compliance")
         return v
+
+    @field_validator("VLLM_BASE_URL")
+    @classmethod
+    def validate_vllm_url(cls, v):
+        """Ensure vLLM is localhost only"""
+        if "localhost" not in v and "127.0.0.1" not in v:
+            raise ValueError("vLLM must be localhost for security compliance")
+        return v
+
+    @field_validator("LLM_PROVIDER")
+    @classmethod
+    def validate_llm_provider(cls, v):
+        """Ensure LLM provider is valid"""
+        valid_providers = ["ollama", "vllm"]
+        if v.lower() not in valid_providers:
+            raise ValueError(f"LLM_PROVIDER must be one of {valid_providers}")
+        return v.lower()
 
     @field_validator("HOST")
     @classmethod
@@ -183,7 +209,10 @@ def validate_security_settings():
     if "localhost" not in settings.OLLAMA_BASE_URL and "127.0.0.1" not in settings.OLLAMA_BASE_URL:
         raise ValueError("Ollama URL must be localhost for security compliance")
 
-    print("✅ Security settings validation passed")
+    if "localhost" not in settings.VLLM_BASE_URL and "127.0.0.1" not in settings.VLLM_BASE_URL:
+        raise ValueError("vLLM URL must be localhost for security compliance")
+
+    print(f"✅ Security settings validation passed (LLM Provider: {settings.LLM_PROVIDER})")
 
 # Run validation on import
 validate_security_settings()
