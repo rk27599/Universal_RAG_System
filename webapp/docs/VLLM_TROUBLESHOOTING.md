@@ -62,6 +62,48 @@ docker pull vllm/vllm-openai:latest
 
 ---
 
+### Error: "RuntimeError: Tried to instantiate class '_core_C.ScalarType', but it does not exist"
+
+**Symptoms:**
+```
+RuntimeError: undefined symbol: _ZN5torch6detail10class_baseC2E...
+PyTorch: 2.8.0+cu128
+vLLM: 0.6.3.post1
+```
+
+**Cause:** vLLM pre-compiled binaries don't match your PyTorch version. vLLM 0.6.3.post1 was compiled for PyTorch 2.6.0, but you have PyTorch 2.8.0.
+
+**Solution 1: Upgrade vLLM** (recommended):
+```bash
+# Uninstall old vLLM
+pip uninstall vllm -y
+
+# Install latest vLLM (0.11.0+ supports PyTorch 2.8)
+pip install --upgrade vllm
+
+# Verify compatibility
+python -c "import vllm, torch; print(f'vLLM: {vllm.__version__}, PyTorch: {torch.__version__}')"
+# Expected: vLLM: 0.11.0, PyTorch: 2.8.0+cu128
+```
+
+**Solution 2: Use Docker** (zero conflicts):
+```bash
+docker pull vllm/vllm-openai:latest
+# Always uses compatible PyTorch version
+```
+
+**Why this happens:**
+- vLLM contains compiled C++ extensions linked to specific PyTorch version
+- Upgrading PyTorch without upgrading vLLM breaks binary compatibility
+- vLLM 0.11.0+ is compiled for PyTorch 2.8.0
+
+**Related issues:**
+- ❌ vLLM 0.6.3.post1 + PyTorch 2.8.0 = Binary mismatch
+- ✅ vLLM 0.11.0 + PyTorch 2.8.0 = Compatible
+- ✅ vLLM 0.6.3.post1 + PyTorch 2.6.0 = Compatible
+
+---
+
 ### Error: "CUDA version mismatch" or "libcudart.so.12.1: cannot open shared object file"
 
 **Cause:** vLLM compiled for different CUDA version
@@ -771,6 +813,150 @@ python -m uvicorn main:app --reload
 
 # No need to stop vLLM (won't be used)
 ```
+
+---
+
+## WSL2-Specific Issues
+
+### Issue: "Slow model downloads (>30 minutes for 2GB model)"
+
+**Cause:** WSL2 network performance limitations, especially on WiFi
+
+**Workarounds:**
+```bash
+# Option 1: Use smaller model for testing
+python -m vllm.entrypoints.openai.api_server \
+    --model TinyLlama/TinyLlama-1.1B-Chat-v1.0  # Only 2.2GB
+
+# Option 2: Pre-download model (better network speed)
+pip install huggingface-hub
+huggingface-cli download mistralai/Mistral-7B-Instruct-v0.2
+
+# Option 3: Use Docker (often faster)
+docker pull vllm/vllm-openai:latest
+```
+
+---
+
+### Issue: "Free memory on device (X/8.0 GiB) less than desired GPU memory utilization"
+
+**Symptoms:**
+```
+ValueError: Free memory on device (3.16/8.0 GiB) on startup
+is less than desired GPU memory utilization (0.7, 5.6 GiB)
+```
+
+**Cause:** Other processes using GPU memory (e.g., BGE-M3 embeddings, Ollama, etc.)
+
+**Solution:**
+```bash
+# 1. Check what's using GPU
+nvidia-smi
+
+# 2. Kill Python processes to free GPU memory
+pkill -9 python
+sleep 3
+
+# 3. Verify GPU memory freed
+nvidia-smi --query-gpu=memory.used,memory.free --format=csv,noheader
+
+# 4. Start vLLM with lower GPU utilization
+python -m vllm.entrypoints.openai.api_server \
+    --model TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
+    --gpu-memory-utilization 0.15  # Use only 15% of GPU memory
+
+# 5. For production: Use dedicated GPU or stop other GPU processes
+# Backend with BGE-M3 uses ~7GB on RTX 3070 (8GB total)
+```
+
+**GPU Memory Management:**
+```bash
+# Check GPU processes
+nvidia-smi --query-compute-apps=pid,name,used_memory --format=csv
+
+# Free CUDA cache (run in Python)
+python -c "import torch; torch.cuda.empty_cache()"
+
+# Calculate available memory
+# Available = Total - Used - Buffer (200MB safety)
+# Example: 8GB total, 1GB used = 6.8GB available
+# Max utilization = 6.8GB / 8GB = 0.85
+```
+
+---
+
+### Issue: "Model loading stuck at 'Using model weights format ['\*.safetensors']'"
+
+**Cause:** Model download in progress (WSL2 has slower download speeds)
+
+**Progress check:**
+```bash
+# Monitor download progress
+watch -n 5 'du -sh ~/.cache/huggingface/hub/models--*'
+
+# Check network activity
+iftop  # Or: nethogs
+
+# Expected download times on WSL2:
+# TinyLlama 1.1B: 2-5 minutes
+# Mistral 7B: 15-30 minutes
+# Llama 2 13B: 30-60 minutes
+```
+
+**Speed up downloads:**
+```bash
+# Use faster DNS
+echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
+
+# Enable HTTP/2
+export HF_HUB_ENABLE_HF_TRANSFER=1
+pip install hf-transfer
+
+# Use wired connection instead of WiFi
+```
+
+---
+
+### Issue: "WSL2 using 'pin_memory=False' - slow performance"
+
+**Symptoms:**
+```
+WARNING: Using 'pin_memory=False' as WSL is detected.
+This may slow down the performance.
+```
+
+**Cause:** WSL2 limitation - pinned memory can cause instability
+
+**Impact:**
+- ~10-20% slower GPU transfers
+- Not a blocker for production use
+- Native Linux doesn't have this issue
+
+**Mitigation:**
+```bash
+# Option 1: Accept slight performance hit (recommended)
+# This warning is informational only
+
+# Option 2: Use Docker Desktop WSL2 backend
+# Often has better GPU performance than bare WSL2
+
+# Option 3: For production: Use native Linux
+# Ubuntu 22.04 LTS with NVIDIA drivers
+```
+
+---
+
+### WSL2 vs Native Linux Comparison
+
+| Feature | WSL2 | Native Linux |
+|---------|------|--------------|
+| **Model Download** | Slow (WiFi bottleneck) | Fast |
+| **GPU Performance** | Good (95% of native) | Excellent (100%) |
+| **GPU Memory** | Full access | Full access |
+| **Network Speed** | Limited by Windows | Direct |
+| **Production Ready** | Yes (with caveats) | Yes (recommended) |
+
+**Recommendation:** Use WSL2 for development/testing, native Linux for production.
 
 ---
 
