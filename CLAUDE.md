@@ -196,36 +196,55 @@ ollama serve
 ollama pull mistral
 ```
 
-### vLLM (High-Performance Alternative - Advanced Users)
+### vLLM (✅ Production Ready - October 2025)
 - ✅ Handles concurrent requests in parallel
 - ✅ **10-100x faster** for multiple users
 - ✅ Efficient multi-GPU utilization
 - ✅ Tensor parallelism support
+- ✅ **Simple setup with provided script**
 - ⚠️  **Requires GPU with CUDA support**
-- ⚠️  **Complex installation** - strict PyTorch/CUDA version requirements
+- ⚠️  **WSL2 limitation** - Use Docker (not native vLLM)
 
-**⚠️ Installation Note:** vLLM has dependency conflicts with existing PyTorch installations. **Recommended for advanced users or production environments.**
+**Status:** ✅ **Production Ready**
+- Tested with Qwen3-4B-Thinking-2507-FP8 on 8GB GPU
+- Docker workaround for WSL2 compatibility
+- Comprehensive error handling and user-friendly messages
+- Single unified script for easy management
 
-**Easiest Setup (Docker):**
+**Quick Setup (Recommended):**
 ```bash
-# Use official vLLM Docker image
-docker pull vllm/vllm-openai:latest
-docker run --gpus all -p 8001:8000 vllm/vllm-openai:latest \
-    --model mistralai/Mistral-7B-Instruct-v0.2
+# Use the provided comprehensive script
+bash webapp/scripts/start_vllm.sh
+
+# Interactive menu will guide you through:
+# 1. Start vLLM (Default: Qwen3-4B-FP8, 16K context)
+# 2. Start vLLM (32K context)
+# 3. Check Status
+# 4. View Logs
+# 5. Stop/Restart vLLM
+
+# Or use command line mode
+bash webapp/scripts/start_vllm.sh start   # Start
+bash webapp/scripts/start_vllm.sh status  # Check status
+bash webapp/scripts/start_vllm.sh stop    # Stop
 ```
 
-**Alternative (Separate Conda Environment):**
+**Manual Docker Setup:**
 ```bash
-# Create isolated environment
-conda create -n vllm-env python=3.10
-conda activate vllm-env
-pip install vllm
-
-# Run vLLM server
-python -m vllm.entrypoints.openai.api_server \
-    --model mistralai/Mistral-7B-Instruct-v0.2 \
-    --host localhost \
-    --port 8001
+docker run -d \
+    --name vllm-server \
+    --gpus all \
+    -p 8001:8000 \
+    --ipc=host \
+    -e VLLM_USE_V1=0 \
+    -v $HOME/.cache/huggingface:/root/.cache/huggingface \
+    vllm/vllm-openai:v0.10.1.1 \
+    --model Qwen/Qwen3-4B-Thinking-2507-FP8 \
+    --dtype float16 \
+    --kv-cache-dtype fp8 \
+    --gpu-memory-utilization 0.95 \
+    --max-model-len 16384 \
+    --max-num-seqs 1
 ```
 
 **Switch Provider:**
@@ -237,10 +256,28 @@ VLLM_BASE_URL=http://localhost:8001
 # Restart backend - no code changes needed!
 ```
 
-**Setup Guides:**
-- [webapp/docs/VLLM_COMPLETE_GUIDE.md](webapp/docs/VLLM_COMPLETE_GUIDE.md) - Complete vLLM guide with architecture & usage
-- [webapp/docs/VLLM_INSTALLATION.md](webapp/docs/VLLM_INSTALLATION.md) - Installation (Docker, native, conda)
-- [webapp/docs/VLLM_TROUBLESHOOTING.md](webapp/docs/VLLM_TROUBLESHOOTING.md) - Common issues & solutions
+**Common Issues & Quick Fixes:**
+- **WSL2 Engine Error:** Use Docker (not native vLLM)
+- **GPU Memory Error:** Use FP8 quantized model (`Qwen3-4B-Thinking-2507-FP8`)
+- **Context Overflow:** Increase `--max-model-len` to 16384 or 32768
+- **All details:** See [VLLM_GUIDE.md](webapp/docs/VLLM_GUIDE.md#common-issues--solutions-october-2025)
+
+**📚 Complete Guide:**
+- **[webapp/docs/VLLM_GUIDE.md](webapp/docs/VLLM_GUIDE.md)** - Consolidated comprehensive guide with everything:
+  - Executive summary and version info
+  - Architecture overview and factory pattern
+  - Installation methods (Docker, native, conda)
+  - Configuration and usage examples
+  - Performance tuning and multi-GPU setup
+  - Troubleshooting (including WSL2-specific issues)
+  - Migration guide from Ollama
+  - Command reference and benchmarks
+
+**Legacy Guides (consolidated into VLLM_GUIDE.md):**
+- VLLM_COMPLETE_GUIDE.md - Full architecture details
+- VLLM_INSTALLATION.md - Installation methods
+- VLLM_TROUBLESHOOTING.md - Issue resolution
+- VLLM_UPGRADE_SUMMARY.md - Merge summary
 - [webapp/docs/VLLM_SETUP.md](webapp/docs/VLLM_SETUP.md) - Quick setup reference (legacy)
 - [webapp/docs/VLLM_INSTALLATION_FIX.md](webapp/docs/VLLM_INSTALLATION_FIX.md) - Legacy installation fixes
 

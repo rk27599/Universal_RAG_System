@@ -792,6 +792,13 @@ async def send_message(sid, data):
         use_rag = data.get('useRAG', True)
         top_k = data.get('topK', 20)
 
+        # Log vLLM usage (no artificial limits - let vLLM handle context overflow with clear errors)
+        from core.config import settings
+        if settings.LLM_PROVIDER == "vllm":
+            logger.info(f"💡 Using vLLM provider (max_tokens={max_tokens}, top_k={top_k}, use_rag={use_rag})")
+            # Note: If context overflow occurs, vLLM will return a user-friendly error message
+            # explaining the issue and suggesting solutions (disable RAG, reduce chunks, etc.)
+
         # Expert system prompt configuration (NEW)
         use_expert_prompt = data.get('useExpertPrompt', True)  # Default ON
         custom_system_prompt = data.get('customSystemPrompt', None)
@@ -999,12 +1006,16 @@ async def send_message(sid, data):
             await sio.emit('typing', {}, room=sid)
 
             # Stream AI response with full context (conversation + documents)
+            logger.info("🐛 DEBUG: Reached LLM generation block")
             start_time = datetime.now()
             llm_service = LLMServiceFactory.get_service()
+            print(f"DEBUG: LLM Service type: {type(llm_service).__name__}")
             full_response = ""
             was_cancelled = False
 
+            print(f"🚀 About to call generate_stream with model={model}, prompt length={len(content)}")
             try:
+                chunk_count = 0
                 async for chunk in llm_service.generate_stream(
                     prompt=content,
                     model=model,
@@ -1013,6 +1024,9 @@ async def send_message(sid, data):
                     system_prompt=system_prompt,  # Pass expert prompt here
                     context=final_context
                 ):
+                    chunk_count += 1
+                    if chunk_count == 1:
+                        print(f"🎉 First chunk received from LLM!")
                     # Check for cancellation
                     if cancellation_flags.get(sid, False):
                         was_cancelled = True
@@ -1025,30 +1039,36 @@ async def send_message(sid, data):
                         await sio.emit('message_chunk', {
                             'content': chunk
                         }, room=sid)
+
+                print(f"✅ Generator loop completed. Received {chunk_count} chunks, response length: {len(full_response)}")
             except Exception as stream_error:
-                # Handle Ollama errors (memory issues, model not found, etc.)
+                # Handle LLM errors from both Ollama and vLLM (memory, context, timeout, etc.)
                 error_message = str(stream_error)
-                logger.error(f"Ollama streaming error: {error_message}")
+                logger.error(f"LLM streaming error ({settings.LLM_PROVIDER}): {error_message}")
 
                 # Stop typing indicator
                 await sio.emit('typing_stop', {}, room=sid)
 
-                # Send user-friendly error message
-                if "more system memory" in error_message.lower():
+                # vLLM errors are already formatted with ❌ prefix and actionable messages
+                # Ollama errors need backward-compatible handling
+                if error_message.startswith('❌'):
+                    # vLLM formatted error - send as-is
+                    await sio.emit('error', {'message': error_message}, room=sid)
+                elif "more system memory" in error_message.lower():
                     await sio.emit('error', {
-                        'message': f'Model "{model}" requires more system memory than available. Please try a smaller model like "mistral:latest".'
+                        'message': f'❌ Model "{model}" requires more system memory than available. Please try a smaller model like "mistral:latest".'
                     }, room=sid)
                 elif "not found" in error_message.lower():
                     await sio.emit('error', {
-                        'message': f'Model "{model}" not found. Please select a different model.'
+                        'message': f'❌ Model "{model}" not found. Please select a different model.'
                     }, room=sid)
                 elif "timeout" in error_message.lower():
                     await sio.emit('error', {
-                        'message': f'Request timed out. The model may be too large or Ollama is not responding.'
+                        'message': f'❌ Request timed out. The model may be too large or the LLM server is not responding.'
                     }, room=sid)
                 else:
                     await sio.emit('error', {
-                        'message': f'Failed to generate response: {error_message}'
+                        'message': f'❌ Failed to generate response: {error_message}'
                     }, room=sid)
 
                 # Clean up and return without saving incomplete message
@@ -1064,9 +1084,27 @@ async def send_message(sid, data):
             # Stop typing indicator
             await sio.emit('typing_stop', {}, room=sid)
 
-            # If cancelled and no content, don't save message
-            if was_cancelled and not full_response.strip():
-                print(f"⚠️ Generation cancelled before any content - no message saved")
+            # Check for empty response (catch silent failures from LLM)
+            if not full_response.strip():
+                provider = settings.LLM_PROVIDER
+                logger.warning(f"⚠️ LLM generated empty response (provider: {provider}, model: {model}, chunks received: {chunk_count})")
+
+                # If cancelled, that's expected - don't show error
+                if was_cancelled:
+                    print(f"⚠️ Generation cancelled before any content - no message saved")
+                    return
+
+                # Empty response without cancellation = error condition
+                await sio.emit('error', {
+                    'message': f'⚠️ The model "{model}" returned an empty response. This may indicate:\n'
+                              f'• Context window exceeded (too many documents + long query)\n'
+                              f'• Model configuration issue\n'
+                              f'• Network/connection problem\n\n'
+                              f'Try: (1) Disable RAG, (2) Use fewer documents, (3) Select a different model, or (4) Check {provider} server logs.'
+                }, room=sid)
+
+                # Don't save empty message to database
+                cancellation_flags[sid] = False
                 return
 
             # Calculate average similarity from actual sources (not hardcoded)

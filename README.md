@@ -74,14 +74,18 @@ ollama serve
 ollama pull mistral
 ```
 
-**Option B: vLLM (Advanced - For Multi-User Production)**
+**Option B: vLLM (✅ Production Ready - Multi-User)**
 ```bash
-# See VLLM_INSTALLATION.md for detailed setup
-# Requires CUDA-capable GPU
-docker pull vllm/vllm-openai:latest
-docker run --gpus all -p 8001:8000 --ipc=host \
-    vllm/vllm-openai:latest \
-    --model mistralai/Mistral-7B-Instruct-v0.2
+# Quick start with provided script
+bash webapp/scripts/start_vllm.sh
+
+# The script will guide you through setup with:
+# - Qwen3-4B-Thinking-2507-FP8 (optimized for 8GB GPU)
+# - 16K context window
+# - Docker-based deployment (WSL2 compatible)
+# - Built-in health checks
+
+# See webapp/docs/VLLM_GUIDE.md for detailed setup
 ```
 
 ### 5. Run Application
@@ -285,9 +289,7 @@ Access the application at **http://localhost:3000**
 - [Features Guide](webapp/docs/FEATURES_GUIDE.md) - 🆕 Complete RAG features overview
 - [BGE-M3 Migration Guide](webapp/docs/BGE_M3_MIGRATION_GUIDE.md) - 🆕 Embedding migration
 - [Enhanced Search Integration](webapp/backend/docs/ENHANCED_SEARCH_INTEGRATION.md) - 🆕 Technical details
-- [vLLM Complete Guide](webapp/docs/VLLM_COMPLETE_GUIDE.md) - 🆕 Multi-user production LLM setup
-- [vLLM Installation](webapp/docs/VLLM_INSTALLATION.md) - 🆕 Docker, native, conda installations
-- [vLLM Troubleshooting](webapp/docs/VLLM_TROUBLESHOOTING.md) - 🆕 Common issues & solutions
+- [vLLM Complete Guide](webapp/docs/VLLM_GUIDE.md) - ✅ Production-ready multi-user LLM setup
 
 ### Deployment
 - [Network Setup](webapp/docs/NETWORK_SETUP.md) - LAN access configuration
@@ -428,6 +430,41 @@ ollama pull llama2
 ollama pull codellama
 ```
 
+### vLLM (Production, Multi-User)
+
+**Best for:** Production deployment, 5+ concurrent users, multi-GPU servers
+
+```bash
+# Docker (recommended)
+docker pull vllm/vllm-openai:latest
+docker run --gpus all -p 8001:8000 --ipc=host \
+    vllm/vllm-openai:latest \
+    --model mistralai/Mistral-7B-Instruct-v0.2
+
+# Or native installation
+pip install vllm==0.11.0
+python -m vllm.entrypoints.openai.api_server \
+    --model mistralai/Mistral-7B-Instruct-v0.2 \
+    --port 8001
+```
+
+**Switching Providers (No Code Changes):**
+
+```bash
+# Use vLLM in .env
+LLM_PROVIDER=vllm
+VLLM_BASE_URL=http://localhost:8001
+
+# Restart backend - that's it!
+```
+
+**📚 Complete Guide:** See [webapp/docs/VLLM_GUIDE.md](webapp/docs/VLLM_GUIDE.md) for comprehensive documentation on:
+- Architecture and factory pattern
+- Installation methods (Docker, native, conda)
+- Configuration and usage
+- Performance tuning and multi-GPU setup
+- Troubleshooting and migration guide
+
 **Features:**
 - ✅ Simple one-command setup
 - ✅ Automatic model management
@@ -462,20 +499,25 @@ LLM_PROVIDER=vllm
 VLLM_BASE_URL=http://localhost:8001
 ```
 
-**Documentation:**
-- 📖 [Complete Guide](webapp/docs/VLLM_COMPLETE_GUIDE.md) - Architecture, usage, tuning
-- 🔧 [Installation](webapp/docs/VLLM_INSTALLATION.md) - Docker, native, conda setups
-- 🐛 [Troubleshooting](webapp/docs/VLLM_TROUBLESHOOTING.md) - Common issues & solutions
+**Quick Start:**
+```bash
+# Use the provided script (recommended)
+bash webapp/scripts/start_vllm.sh
+
+# Or see complete documentation
+# webapp/docs/VLLM_GUIDE.md
+```
 
 **Comparison:**
 
 | Feature | Ollama | vLLM |
 |---------|--------|------|
-| Setup | Simple (one command) | Moderate (requires config) |
+| Setup | Simple (one command) | Easy (provided script) ✅ |
 | Single User | Fast ✅ | Fast ✅ |
 | 10 Concurrent Users | Slow (serialized) | **8-10x faster** 🚀 |
 | Multi-GPU | Limited | Excellent ✅ |
 | Model Management | Automatic | Manual (Hugging Face) |
+| Production Ready | Development | ✅ Production |
 
 **Switching Providers:**
 ```bash
@@ -484,11 +526,11 @@ VLLM_BASE_URL=http://localhost:8001
 # Use Ollama (default)
 LLM_PROVIDER=ollama
 
-# Use vLLM
+# Use vLLM (production)
 LLM_PROVIDER=vllm
 ```
 
-For detailed vLLM setup, performance tuning, and multi-GPU configuration, see [VLLM_COMPLETE_GUIDE.md](webapp/docs/VLLM_COMPLETE_GUIDE.md).
+For detailed vLLM setup, performance tuning, and multi-GPU configuration, see [VLLM_GUIDE.md](webapp/docs/VLLM_GUIDE.md).
 
 ## 📝 API Endpoints
 

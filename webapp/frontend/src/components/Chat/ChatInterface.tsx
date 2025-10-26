@@ -838,14 +838,30 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ conversationId }) => {
         </Box>
       </Paper>
 
-      {/* Error Snackbar */}
+      {/* Error Snackbar - Persistent (user must close manually) */}
       <Snackbar
         open={!!error}
-        autoHideDuration={6000}
-        onClose={clearError}
+        autoHideDuration={null}
+        onClose={(event, reason) => {
+          // Only allow manual close (clicking X), not clickaway or timeout
+          if (reason === 'clickaway') {
+            return;
+          }
+          clearError();
+        }}
         anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
       >
-        <Alert onClose={clearError} severity="error" sx={{ width: '100%' }}>
+        <Alert
+          onClose={clearError}
+          severity="error"
+          sx={{
+            width: '100%',
+            maxWidth: '600px',
+            '& .MuiAlert-message': {
+              whiteSpace: 'pre-line', // Preserve line breaks in error messages
+            }
+          }}
+        >
           {error}
         </Alert>
       </Snackbar>

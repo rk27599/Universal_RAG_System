@@ -1,8 +1,15 @@
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from typing import Optional
-from services.ollama_service import get_available_models, check_ollama_connection
+from services.llm_factory import (
+    get_available_models,
+    check_llm_connection,
+    get_current_provider,
+    get_provider_info,
+    LLMServiceFactory
+)
 from core.database import check_database_connection, get_db
+from core.config import settings
 from sqlalchemy.orm import Session
 
 router = APIRouter(tags=["Models"])
@@ -34,46 +41,17 @@ async def get_models():
 
 
 @router.get("/models/{model_name}")
-async def get_model_info(model_name: str):
-    """Get detailed model information from Ollama"""
+async def get_model_info_endpoint(model_name: str):
+    """Get detailed model information from current LLM provider"""
     try:
-        import aiohttp
-        from core.config import settings
+        # Use factory to get model info from current provider
+        llm_service = LLMServiceFactory.get_service()
+        model_data = await llm_service.get_model_info(model_name)
 
-        # Get size from tags endpoint
-        size_in_bytes = 0
-        modified_at = ""
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(f"{settings.OLLAMA_BASE_URL}/api/tags") as response:
-                    if response.status == 200:
-                        tags_data = await response.json()
-                        for model in tags_data.get('models', []):
-                            if model.get('name') == model_name or model.get('model') == model_name:
-                                size_in_bytes = model.get('size', 0)
-                                modified_at = model.get('modified_at', '')
-                                break
-        except Exception as e:
-            print(f"⚠️  Could not fetch size from tags: {e}")
-
-        # Get detailed model info from Ollama
-        from services.ollama_service import ollama_service
-        model_data = await ollama_service.get_model_info(model_name)
-
-        if model_data and 'details' in model_data:
-            details = model_data['details']
-
+        if model_data:
             return {
                 "success": True,
-                "data": {
-                    "name": model_name,
-                    "family": details.get('family', 'Unknown'),
-                    "size": str(size_in_bytes),  # Size in bytes as string
-                    "parameters": details.get('parameter_size', 'Unknown'),
-                    "format": details.get('format', 'Unknown'),
-                    "quantization": details.get('quantization_level', 'Unknown'),
-                    "modified_at": modified_at
-                },
+                "data": model_data,
                 "message": "Model info retrieved"
             }
         else:
@@ -83,7 +61,7 @@ async def get_model_info(model_name: str):
                 "data": {
                     "name": model_name,
                     "family": "Unknown",
-                    "size": str(size_in_bytes),
+                    "size": "0",
                     "parameters": "Unknown",
                     "format": "Unknown"
                 },
@@ -109,9 +87,10 @@ async def get_model_info(model_name: str):
 async def get_system_status():
     """Get system status"""
     try:
-        # Check Ollama connection
-        ollama_status = await check_ollama_connection()
-        ollama_models = await get_available_models() if ollama_status else []
+        # Check current LLM provider connection
+        current_provider = get_current_provider()
+        llm_status = await check_llm_connection()
+        llm_models = await get_available_models() if llm_status else []
 
         # Check database connection
         db_status = await check_database_connection()
@@ -119,9 +98,10 @@ async def get_system_status():
         return {
             "success": True,
             "data": {
-                "ollama": {
-                    "status": "running" if ollama_status else "offline",
-                    "models": ollama_models
+                "llm": {
+                    "provider": current_provider,
+                    "status": "running" if llm_status else "offline",
+                    "models": llm_models
                 },
                 "database": {
                     "status": "connected" if db_status else "disconnected",
@@ -139,10 +119,29 @@ async def get_system_status():
         return {
             "success": False,
             "data": {
-                "ollama": {"status": "unknown", "models": []},
+                "llm": {"provider": "unknown", "status": "unknown", "models": []},
                 "database": {"status": "unknown", "connections": 0},
                 "security": {"score": 0, "violations": 0}
             },
+            "message": f"Error: {str(e)}"
+        }
+
+
+@router.get("/models/provider/info")
+async def get_llm_provider_info():
+    """Get current LLM provider information and configuration"""
+    try:
+        provider_info = get_provider_info()
+        return {
+            "success": True,
+            "data": provider_info,
+            "message": "Provider info retrieved"
+        }
+    except Exception as e:
+        print(f"❌ Error getting provider info: {e}")
+        return {
+            "success": False,
+            "data": {"provider": "unknown", "error": str(e)},
             "message": f"Error: {str(e)}"
         }
 

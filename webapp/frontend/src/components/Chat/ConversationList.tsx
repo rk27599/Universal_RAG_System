@@ -256,12 +256,6 @@ const ConversationList: React.FC<ConversationListProps> = ({
 
       {/* Conversation List */}
       <Box sx={{ flexGrow: 1, overflow: 'auto', pb: 10 }}>
-        {error && (
-          <Alert severity="error" sx={{ m: 2 }}>
-            {error}
-          </Alert>
-        )}
-
         {filteredConversations.length === 0 ? (
           <Box sx={{ p: 3, textAlign: 'center' }}>
             <ChatIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
