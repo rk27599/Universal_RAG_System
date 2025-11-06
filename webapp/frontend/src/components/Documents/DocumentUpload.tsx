@@ -70,9 +70,10 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
       return `File too large. Maximum size: ${(config.security.maxFileSize / 1024 / 1024).toFixed(1)}MB`;
     }
 
-    // Check file type - also accept by extension for .jsonl files
+    // Check file type - also accept by extension for .jsonl files and images
     const fileExtension = file.name.toLowerCase().split('.').pop();
-    const allowedExtensions = ['txt', 'html', 'htm', 'md', 'pdf', 'doc', 'docx', 'json', 'jsonl', 'ndjson'];
+    const allowedExtensions = ['txt', 'html', 'htm', 'md', 'pdf', 'doc', 'docx', 'json', 'jsonl', 'ndjson',
+                              'jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'webp'];
 
     const isValidByType = config.security.allowedFileTypes.includes(file.type);
     const isValidByExtension = fileExtension && allowedExtensions.includes(fileExtension);

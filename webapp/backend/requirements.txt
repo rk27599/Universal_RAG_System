@@ -96,8 +96,12 @@ transformers==4.35.2
 PyPDF2==3.0.1
 pdfplumber==0.10.3
 
-# Image processing for PDF image extraction
+# Image processing for PDF image extraction and standalone image support
 Pillow==10.1.0
+
+# OCR for image text extraction (optional but recommended)
+easyocr==1.7.0  # Preferred OCR engine with GPU support
+pytesseract==0.3.10  # Fallback OCR engine (requires tesseract binary)
 
 # Optional: For document processing
 python-docx==1.1.0

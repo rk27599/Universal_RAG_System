@@ -89,8 +89,10 @@ class DocumentProcessingService:
                 return None, "No filename provided"
 
             file_ext = Path(file.filename).suffix.lower()
-            if file_ext not in ['.html', '.htm', '.txt', '.json', '.jsonl', '.pdf']:
-                return None, f"Unsupported file type: {file_ext}. Only .html, .htm, .txt, .json, .jsonl, and .pdf files are supported."
+            supported_extensions = ['.html', '.htm', '.txt', '.json', '.jsonl', '.pdf',
+                                  '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp']
+            if file_ext not in supported_extensions:
+                return None, f"Unsupported file type: {file_ext}. Supported formats: HTML, TXT, JSON, JSONL, PDF, and images (JPG, PNG, GIF, BMP, TIFF, WebP)."
 
             # 2. Read file content
             content = await file.read()
@@ -613,6 +615,117 @@ class DocumentProcessingService:
             if file_ext in ['.json', '.jsonl'] or (content_type and 'application/json' in content_type):
                 logger.info(f"Processing JSON/JSONL file: {file_path}")
                 return await self._parse_json_file(file_path)
+
+            # Handle Image files with ImageProcessor
+            elif file_ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp'] or \
+                 (content_type and any(img_type in content_type for img_type in ['image/jpeg', 'image/png', 'image/gif', 'image/bmp', 'image/webp'])):
+                logger.info(f"🖼️  Processing image file: {file_path}")
+
+                # Verify file exists
+                if not file_path.exists():
+                    logger.error(f"❌ Image file not found: {file_path}")
+                    return None
+
+                # Check if ImageProcessor can be imported
+                try:
+                    from services.image_processor import ImageProcessor, ImageProcessorConfig
+                    logger.info("✅ ImageProcessor imported successfully")
+                except ImportError as e:
+                    logger.error(f"❌ Failed to import ImageProcessor: {e}")
+                    logger.error("Install Pillow with: pip install Pillow")
+                    return None
+
+                # Initialize processor with default config
+                config = ImageProcessorConfig(
+                    enable_ocr=True,
+                    enable_vision_model=True,
+                    chunk_size=1000,
+                    overlap=200
+                )
+                processor = ImageProcessor(config=config)
+
+                logger.info(f"🚀 Starting image processing for {file_path.name}")
+
+                # Get LLM service for vision model (if available)
+                llm_service = None
+                try:
+                    from services.llm_factory import get_llm_service
+                    llm_service = get_llm_service()
+                    if llm_service and not llm_service.supports_vision():
+                        logger.warning("LLM service doesn't support vision models. Skipping vision description.")
+                        llm_service = None
+                except Exception as e:
+                    logger.warning(f"Could not get LLM service for vision: {e}")
+
+                # Process image with progress tracking
+                try:
+                    async def image_progress_callback(doc_id: int, stage: str, pct: float):
+                        await self._emit_progress(doc_id, stage, pct)
+
+                    result = await processor.process_image(
+                        file_path,
+                        document_id,
+                        llm_service=llm_service,
+                        progress_callback=image_progress_callback
+                    )
+
+                    if result:
+                        ocr_chars = result.get('metadata', {}).get('ocr_char_count', 0)
+                        vision_chars = result.get('metadata', {}).get('vision_char_count', 0)
+                        chunk_count = result.get('metadata', {}).get('chunk_count', 0)
+
+                        logger.info(
+                            f"✅ Image processed successfully: {file_path.name} | "
+                            f"OCR: {ocr_chars} chars | Vision: {vision_chars} chars | {chunk_count} chunks"
+                        )
+
+                        # Update document with image-specific metadata
+                        db = next(get_db())
+                        try:
+                            doc = db.query(Document).filter(Document.id == document_id).first()
+                            if doc:
+                                metadata = result.get('metadata', {})
+                                doc.image_width = metadata.get('width')
+                                doc.image_height = metadata.get('height')
+                                doc.image_format = metadata.get('format')
+                                doc.has_ocr_text = ocr_chars > 0
+                                doc.has_vision_description = vision_chars > 0
+                                doc.thumbnail_path = metadata.get('thumbnail_path')
+                                db.commit()
+                                logger.info(f"✅ Updated document {document_id} with image metadata")
+                        except Exception as db_error:
+                            logger.error(f"Failed to update image metadata: {db_error}")
+                        finally:
+                            db.close()
+
+                        # Convert to standard format for chunking
+                        return {
+                            'page_title': result['page_title'],
+                            'url': f"file://{file_path}",
+                            'domain': 'local',
+                            'total_sections': result['total_sections'],
+                            'sections': [
+                                {
+                                    'title': f"Image: {file_path.name}",
+                                    'level': 1,
+                                    'content_text': chunk,
+                                    'word_count': len(chunk.split()),
+                                    'metadata': {
+                                        'content_type': 'image',
+                                        'source_file': str(file_path),
+                                        **result['metadata']
+                                    }
+                                }
+                                for chunk in result['chunks']
+                            ]
+                        }
+                    else:
+                        logger.error(f"❌ Image processor returned None for {file_path.name}")
+                        return None
+
+                except Exception as img_error:
+                    logger.error(f"❌ Exception during image processing of {file_path.name}: {img_error}", exc_info=True)
+                    return None
 
             # Handle PDF files with PDFProcessor
             elif file_ext == ".pdf" or (content_type and "application/pdf" in content_type):

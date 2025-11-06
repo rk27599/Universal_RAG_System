@@ -109,6 +109,42 @@ class BaseLLMService(ABC):
         """
         pass
 
+    async def generate_with_image(
+        self,
+        prompt: str,
+        image_path: str,
+        model: str = None,
+        temperature: float = 0.7,
+        max_tokens: int = 4096
+    ) -> Optional[str]:
+        """
+        Generate text completion using a multimodal vision model
+
+        Args:
+            prompt: The user's input prompt
+            image_path: Path to the image file
+            model: Model name to use (uses default vision model if None)
+            temperature: Sampling temperature (0.0-1.0)
+            max_tokens: Maximum tokens to generate
+
+        Returns:
+            Optional[str]: Generated text or None if generation failed
+
+        Note:
+            This is an optional method. Providers that don't support vision
+            models should raise NotImplementedError or return None.
+        """
+        raise NotImplementedError("Vision models not supported by this provider")
+
+    def supports_vision(self) -> bool:
+        """
+        Check if this provider supports vision/multimodal models
+
+        Returns:
+            bool: True if vision models are supported, False otherwise
+        """
+        return False
+
 
 class LLMServiceError(Exception):
     """Base exception for LLM service errors"""

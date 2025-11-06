@@ -60,20 +60,28 @@ async def upload_document(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Upload and process a document (HTML, HTM, TXT, JSON, JSONL, or PDF)
+    Upload and process a document (HTML, TXT, JSON, JSONL, PDF, or Images)
 
     The document will be processed asynchronously:
-    1. Content extraction using intelligent parsing (HTML, JSON, PDF)
+    1. Content extraction using intelligent parsing (HTML, JSON, PDF, Images)
     2. Semantic chunking based on document structure (configurable chunk size)
     3. Vector embedding generation for each chunk
     4. Storage in database with metadata
 
     PDF Processing Features:
     - Page-by-page text extraction
-    - Image extraction with metadata (for future multimodal RAG)
+    - Image extraction with metadata
     - Code block detection in technical documentation
     - Table of contents structure preservation
     - Page number tracking for citations
+
+    Image Processing Features (NEW):
+    - OCR text extraction (EasyOCR/Pytesseract)
+    - Vision model descriptions (LLaVA via Ollama)
+    - Automatic image preprocessing and optimization
+    - Thumbnail generation for preview
+    - Metadata extraction (dimensions, format, EXIF)
+    - Supported formats: JPG, JPEG, PNG, GIF, BMP, TIFF, WebP
 
     Args:
         file: Document file to upload

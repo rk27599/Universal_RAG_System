@@ -193,6 +193,78 @@ class OllamaService(BaseLLMService):
             print(f"❌ Failed to pull model: {e}")
             return False
 
+    async def generate_with_image(
+        self,
+        prompt: str,
+        image_path: str,
+        model: str = None,
+        temperature: float = 0.7,
+        max_tokens: int = 4096
+    ) -> Optional[str]:
+        """
+        Generate text completion using a multimodal vision model (LLaVA)
+
+        Args:
+            prompt: The user's input prompt
+            image_path: Path to the image file
+            model: Model name (defaults to 'llava')
+            temperature: Sampling temperature
+            max_tokens: Maximum tokens to generate
+
+        Returns:
+            Generated text description or None on error
+        """
+        import base64
+        from pathlib import Path
+
+        model = model or "llava"  # Default to LLaVA
+
+        try:
+            # Read and encode image as base64
+            image_file = Path(image_path)
+            if not image_file.exists():
+                print(f"❌ Image file not found: {image_path}")
+                return None
+
+            with open(image_file, "rb") as f:
+                image_data = base64.b64encode(f.read()).decode('utf-8')
+
+            payload = {
+                "model": model,
+                "prompt": prompt,
+                "images": [image_data],
+                "stream": False,
+                "options": {
+                    "temperature": temperature,
+                    "num_predict": max_tokens,
+                }
+            }
+
+            async with aiohttp.ClientSession(timeout=self.timeout) as session:
+                async with session.post(
+                    f"{self.base_url}/api/generate",
+                    json=payload
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if 'error' in data:
+                            error_msg = data['error']
+                            print(f"❌ Ollama vision error: {error_msg}")
+                            return None
+                        return data.get("response", "")
+                    else:
+                        error_text = await response.text()
+                        print(f"❌ Ollama vision generation failed ({response.status}): {error_text}")
+                        return None
+
+        except Exception as e:
+            print(f"❌ Vision model generation error: {e}")
+            return None
+
+    def supports_vision(self) -> bool:
+        """Ollama supports vision models (LLaVA, LLaVA-1.6, etc.)"""
+        return True
+
 
 # Global instance
 ollama_service = OllamaService()

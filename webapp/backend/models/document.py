@@ -56,6 +56,14 @@ class Document(BaseModel, SecurityAuditMixin):
     processing_config = Column(JSON, nullable=True)  # Processing parameters used
     extraction_metadata = Column(JSON, nullable=True)  # Metadata from extraction
 
+    # Image-specific metadata (for image documents)
+    image_width = Column(Integer, nullable=True)  # Image width in pixels
+    image_height = Column(Integer, nullable=True)  # Image height in pixels
+    image_format = Column(String(20), nullable=True)  # Image format (JPEG, PNG, etc.)
+    has_ocr_text = Column(Boolean, default=False)  # Whether OCR was performed
+    has_vision_description = Column(Boolean, default=False)  # Whether vision model generated description
+    thumbnail_path = Column(Text, nullable=True)  # Path to thumbnail image
+
     # Relationships
     owner = relationship("User", back_populates="documents")
     chunks = relationship("Chunk", back_populates="document", cascade="all, delete-orphan")

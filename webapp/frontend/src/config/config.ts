@@ -38,7 +38,15 @@ export const config = {
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'application/json',
       'application/jsonl',
-      'application/x-ndjson'
+      'application/x-ndjson',
+      // Image types
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/gif',
+      'image/bmp',
+      'image/tiff',
+      'image/webp'
     ]
   },
 
