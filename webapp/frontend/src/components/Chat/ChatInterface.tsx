@@ -668,8 +668,42 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ conversationId }) => {
   }, [handleSendMessage]);
 
   const handleCopyMessage = useCallback((content: string) => {
-    navigator.clipboard.writeText(content);
-    setSnackbarMessage('Message copied to clipboard');
+    // Check if Clipboard API is available (HTTPS or localhost)
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      // Modern Clipboard API (preferred)
+      navigator.clipboard.writeText(content)
+        .then(() => {
+          setSnackbarMessage('Message copied to clipboard');
+        })
+        .catch((err) => {
+          console.error('Failed to copy using Clipboard API:', err);
+          setSnackbarMessage('Failed to copy message');
+        });
+    } else {
+      // Fallback for HTTP contexts (legacy method)
+      try {
+        const textArea = document.createElement('textarea');
+        textArea.value = content;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-9999px';
+        textArea.style.top = '-9999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+
+        const successful = document.execCommand('copy');
+        document.body.removeChild(textArea);
+
+        if (successful) {
+          setSnackbarMessage('Message copied to clipboard');
+        } else {
+          setSnackbarMessage('Failed to copy message');
+        }
+      } catch (err) {
+        console.error('Failed to copy using fallback method:', err);
+        setSnackbarMessage('Copy not supported in this context');
+      }
+    }
   }, []);
 
   const toggleSources = useCallback((messageId: string) => {
