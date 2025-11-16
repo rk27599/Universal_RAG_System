@@ -314,11 +314,11 @@ const ModelSettings: React.FC = () => {
                   >
                     <ListItemText
                       primary="Ollama Service"
-                      secondary={`${systemStatus.ollama.models.length} models available`}
+                      secondary={`${systemStatus.ollama?.models?.length || 0} models available`}
                       sx={{ flexShrink: 1, minWidth: 0 }}
                     />
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
-                      {getStatusIcon(systemStatus.ollama.status)}
+                      {getStatusIcon(systemStatus.ollama?.status || 'offline')}
                       <Chip
                         size="small"
                         label={isConnected ? 'Connected' : 'Offline'}
@@ -342,11 +342,11 @@ const ModelSettings: React.FC = () => {
                   >
                     <ListItemText
                       primary="Database"
-                      secondary={`${systemStatus.database.connections} active connections`}
+                      secondary={`${systemStatus.database?.connections || 0} active connections`}
                       sx={{ flexShrink: 1, minWidth: 0 }}
                     />
                     <Box sx={{ flexShrink: 0 }}>
-                      {getStatusIcon(systemStatus.database.status)}
+                      {getStatusIcon(systemStatus.database?.status || 'offline')}
                     </Box>
                   </ListItem>
 
@@ -370,8 +370,8 @@ const ModelSettings: React.FC = () => {
                     <Box sx={{ flexShrink: 0 }}>
                       <Chip
                         size="small"
-                        label={`${systemStatus.security.score}/100`}
-                        color={getSecurityScoreColor(systemStatus.security.score)}
+                        label={`${systemStatus.security?.score || 0}/100`}
+                        color={getSecurityScoreColor(systemStatus.security?.score || 0)}
                         variant="filled"
                       />
                     </Box>

@@ -271,7 +271,7 @@ class ApiService {
   }
 
   async regenerateMessage(conversationId: string, messageId: string): Promise<ApiResponse<ChatMessage>> {
-    const response = await this.client.post(`/api/chat/${conversationId}/regenerate/${messageId}`);
+    const response = await this.client.post(`/api/chat/conversations/${conversationId}/regenerate/${messageId}`);
     return response.data;
   }
 

@@ -592,7 +592,7 @@ async def regenerate_message(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Regenerate a message"""
+    """Regenerate a message with RAG support"""
     try:
         # Find the message
         message = db.query(Message).filter(Message.id == message_id).first()
@@ -600,30 +600,138 @@ async def regenerate_message(
             raise HTTPException(status_code=404, detail="Message not found")
 
         # Find previous user message
-        user_messages = db.query(Message).filter(
+        user_message = db.query(Message).filter(
             Message.conversation_id == conversation_id,
             Message.role == "user",
             Message.created_at < message.created_at
         ).order_by(Message.created_at.desc()).first()
 
-        if not user_messages:
+        if not user_message:
             raise HTTPException(status_code=400, detail="No previous user message found")
 
-        # Regenerate response
-        ai_response = await generate_response(
-            prompt=user_messages.content,
-            model=message.model_name or "mistral"
+        # Get original parameters from the message
+        original_params = message.model_parameters or {}
+        use_rag = original_params.get('useRAG', True)
+        top_k = original_params.get('topK', 25)
+        # Use temperature 0.7 for regeneration to get varied responses
+        # (even if original was 0.0, we want different output when user clicks regenerate)
+        temperature = 0.7
+        model = message.model_name or "mistral"
+
+        # RAG settings
+        use_reranker = original_params.get('useReranker', True)
+        use_hybrid_search = original_params.get('useHybridSearch', False)
+        use_query_expansion = original_params.get('useQueryExpansion', False)
+        prompt_template = original_params.get('promptTemplate', None)
+
+        logger.info(f"🔄 Regenerating message with RAG={use_rag}, top_k={top_k}, model={model}")
+
+        document_context = None
+        document_sources = []
+
+        # Run RAG if enabled (same logic as WebSocket handler)
+        if use_rag:
+            try:
+                from services.document_service import DocumentProcessingService
+                from services.enhanced_search_service import EnhancedSearchService
+
+                doc_service = DocumentProcessingService(db, user_id=current_user.id)
+
+                # Check if user has any completed documents
+                doc_count = db.query(Document).filter(
+                    Document.user_id == current_user.id,
+                    Document.processing_status == "completed"
+                ).count()
+
+                if doc_count > 0:
+                    # Initialize enhanced search service
+                    enhanced_search = EnhancedSearchService(
+                        document_service=doc_service,
+                        enable_reranker=use_reranker,
+                        enable_hybrid_search=use_hybrid_search,
+                        enable_query_expansion=use_query_expansion,
+                        enable_corrective_rag=False,
+                        enable_web_search=False
+                    )
+
+                    # Use enhanced search
+                    if prompt_template:
+                        search_result = await enhanced_search.search_with_template(
+                            query=user_message.content,
+                            template=prompt_template,
+                            top_k=top_k,
+                            document_ids=None,
+                            min_similarity=0.1
+                        )
+                        document_context = search_result.get('prompt')
+                        search_results = search_result.get('results', [])
+                    else:
+                        search_result = await enhanced_search.search(
+                            query=user_message.content,
+                            top_k=top_k,
+                            document_ids=None,
+                            min_similarity=0.1
+                        )
+                        search_results = search_result.get('results', [])
+
+                    # Build document context
+                    if search_results and not prompt_template:
+                        doc_parts = []
+                        for result in search_results:
+                            doc_parts.append(
+                                f"Document: {result['document_title']}\n"
+                                f"Section: {result.get('section', 'N/A')}\n"
+                                f"Content: {result['content']}\n"
+                                f"Relevance: {result['similarity']:.2%}"
+                            )
+                        document_context = "\n\n---\n\n".join(doc_parts)
+
+                    # Store sources for metadata
+                    document_sources = search_results
+                    logger.info(f"📊 Regenerate: Found {len(search_results)} RAG results")
+                else:
+                    logger.warning(f"⚠️ User has no completed documents for RAG")
+
+            except Exception as e:
+                logger.error(f"❌ RAG search failed during regeneration: {e}")
+                # Continue without RAG if it fails
+
+        # Get system prompt
+        use_expert_prompt = original_params.get('useExpertPrompt', True)
+        custom_system_prompt = original_params.get('customSystemPrompt')
+
+        system_prompt = None
+        if use_expert_prompt and document_context:
+            system_prompt = custom_system_prompt if custom_system_prompt else DEFAULT_MATERIAL_STUDIO_PROMPT
+
+        # Generate response using LLM factory (non-streaming for faster response)
+        llm_service = LLMServiceFactory.get_service()
+
+        # Use non-streaming generate for faster response (no timeout issues)
+        ai_response = await llm_service.generate(
+            prompt=user_message.content,
+            model=model,
+            temperature=temperature,
+            max_tokens=4096,
+            system_prompt=system_prompt,
+            context=document_context
         )
 
         if not ai_response:
-            ai_response = "Regenerated response (Ollama connection pending)"
+            ai_response = "Regenerated response (LLM connection pending)"
 
         # Update message
         message.content = ai_response
         message.token_count = len(ai_response.split())
         message.updated_at = datetime.utcnow()
+
+        # Update context_documents if RAG was used
+        if document_sources:
+            message.context_documents = document_sources
+
         db.commit()
 
+        # Build response with metadata
         response_data = {
             "id": str(message.id),
             "role": "assistant",
@@ -631,7 +739,8 @@ async def regenerate_message(
             "timestamp": message.updated_at.isoformat(),
             "metadata": {
                 "model": message.model_name,
-                "tokenCount": message.token_count
+                "tokenCount": message.token_count,
+                "sources": document_sources if document_sources else None
             }
         }
 
@@ -644,7 +753,9 @@ async def regenerate_message(
         raise
     except Exception as e:
         db.rollback()
-        print(f"❌ Error regenerating message: {e}")
+        logger.error(f"❌ Error regenerating message: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail="Failed to regenerate message")
 
 

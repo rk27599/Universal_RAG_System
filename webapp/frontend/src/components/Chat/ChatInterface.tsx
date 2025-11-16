@@ -36,14 +36,13 @@ import {
   Send as SendIcon,
   Stop as StopIcon,
   Refresh as RefreshIcon,
-  ThumbUp,
-  ThumbDown,
   ContentCopy as CopyIcon,
   SmartToy,
   Person,
   Settings as SettingsIcon,
   ExpandMore as ExpandMoreIcon,
   Description as DocumentIcon,
+  Psychology as ThinkingIcon,
 } from '@mui/icons-material';
 import { useChat } from '../../contexts/ChatContext';
 import { ChatMessage, DocumentSource } from '../../services/api';
@@ -148,9 +147,9 @@ interface MessageCardProps {
   message: ChatMessage;
   selectedModel: string;
   expandedSources: Set<string>;
+  isRegenerating: boolean;
   onCopy: (content: string) => void;
   onRegenerate: (id: string) => void;
-  onRate: (id: string, rating: number) => void;
   onToggleSources: (id: string) => void;
 }
 
@@ -158,14 +157,66 @@ const MessageCard = React.memo<MessageCardProps>(({
   message,
   selectedModel,
   expandedSources,
+  isRegenerating,
   onCopy,
   onRegenerate,
-  onRate,
   onToggleSources,
 }) => {
   const isUser = message.role === 'user';
   const isSystem = message.role === 'system';
   const hasSources = message.metadata?.sources && message.metadata.sources.length > 0;
+  const [showThinking, setShowThinking] = React.useState(false);
+
+  // Parse thinking from content (for Qwen3-4B-Thinking and similar models)
+  const parseThinkingContent = (content: string): { thinking: string | null; answer: string } => {
+    // Pattern 1: Check for <think> or </think> tags (Qwen3 format)
+    // Note: Model outputs </think> (closing tag) at the end of thinking
+    const thinkTagMatch = content.match(/([\s\S]*?)<\/think>\s*/);
+    if (thinkTagMatch) {
+      const thinking = thinkTagMatch[1].trim();
+      const answer = content.replace(/[\s\S]*?<\/think>\s*/, '').trim();
+
+      if (thinking.length > 0 && answer.length > 0) {
+        return { thinking, answer };
+      }
+    }
+
+    // Pattern 2: Check for thinking process in plain text format
+    // Thinking typically appears as internal monologue before the actual answer
+    // Examples: "Okay,", "Hmm,", "Let me think", "First thought:", etc.
+    const paragraphs = content.split('\n\n');
+
+    // Check if first paragraph looks like thinking (contains thinking indicators)
+    const thinkingIndicators = [
+      /^(Okay[,.]|Hmm[,.]|Let me think|First thought|I should|The user is asking|This seems|Looking at|Let me analyze)/i,
+      /\b(seems like|looks like|probably|maybe|I think|wondering|trying to|I'll craft|I should)\b/i,
+    ];
+
+    if (paragraphs.length >= 2) {
+      const firstPara = paragraphs[0];
+      const hasThinkingIndicators = thinkingIndicators.some(pattern => pattern.test(firstPara));
+
+      // If first paragraph has thinking indicators and is substantial (>30 chars)
+      if (hasThinkingIndicators && firstPara.length > 30) {
+        // Check if there's clear answer content after
+        const remainingContent = paragraphs.slice(1).join('\n\n').trim();
+
+        if (remainingContent.length > 20) {
+          return {
+            thinking: firstPara.trim(),
+            answer: remainingContent
+          };
+        }
+      }
+    }
+
+    // No thinking detected
+    return { thinking: null, answer: content };
+  };
+
+  const { thinking, answer } = !isUser && !isSystem
+    ? parseThinkingContent(message.content)
+    : { thinking: null, answer: message.content };
 
   // Memoize markdown components
   const markdownComponents = useMemo(() => ({
@@ -248,13 +299,63 @@ const MessageCard = React.memo<MessageCardProps>(({
               </Typography>
             </Box>
 
+            {/* Thinking Section (Qwen3-4B-Thinking model) */}
+            {thinking && (
+              <Box sx={{ mb: 1 }}>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 0.5,
+                    cursor: 'pointer',
+                    '&:hover': { opacity: 0.7 },
+                  }}
+                  onClick={() => setShowThinking(!showThinking)}
+                >
+                  <ThinkingIcon sx={{ fontSize: '0.9rem', color: 'text.secondary' }} />
+                  <Typography variant="caption" sx={{ color: 'text.secondary', fontStyle: 'italic' }}>
+                    Show thinking process
+                  </Typography>
+                  <ExpandMoreIcon
+                    sx={{
+                      fontSize: '1rem',
+                      color: 'text.secondary',
+                      transform: showThinking ? 'rotate(180deg)' : 'rotate(0deg)',
+                      transition: 'transform 0.2s',
+                    }}
+                  />
+                </Box>
+
+                <Collapse in={showThinking}>
+                  <Box
+                    sx={{
+                      mt: 1,
+                      p: 1.5,
+                      backgroundColor: isUser ? 'rgba(255,255,255,0.05)' : 'grey.50',
+                      borderRadius: 1,
+                      borderLeft: '3px solid',
+                      borderColor: 'primary.light',
+                      opacity: 0.7,
+                    }}
+                  >
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={markdownComponents}
+                    >
+                      {thinking}
+                    </ReactMarkdown>
+                  </Box>
+                </Collapse>
+              </Box>
+            )}
+
             {/* Message Content */}
             <Box sx={contentBoxSx}>
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={markdownComponents}
               >
-                {message.content}
+                {answer}
               </ReactMarkdown>
             </Box>
 
@@ -366,7 +467,7 @@ const MessageCard = React.memo<MessageCardProps>(({
               <Tooltip title="Copy message">
                 <IconButton
                   size="small"
-                  onClick={() => onCopy(message.content)}
+                  onClick={() => onCopy(answer)}
                   sx={{ color: isUser ? 'primary.contrastText' : 'text.secondary' }}
                 >
                   <CopyIcon fontSize="small" />
@@ -374,37 +475,20 @@ const MessageCard = React.memo<MessageCardProps>(({
               </Tooltip>
 
               {!isUser && (
-                <>
-                  <Tooltip title="Regenerate response">
-                    <IconButton
-                      size="small"
-                      onClick={() => onRegenerate(message.id)}
-                      sx={{ color: 'text.secondary' }}
-                    >
+                <Tooltip title={isRegenerating ? "Regenerating..." : "Regenerate response"}>
+                  <IconButton
+                    size="small"
+                    onClick={() => onRegenerate(message.id)}
+                    disabled={isRegenerating}
+                    sx={{ color: 'text.secondary' }}
+                  >
+                    {isRegenerating ? (
+                      <CircularProgress size={16} color="inherit" />
+                    ) : (
                       <RefreshIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-
-                  <Tooltip title="Good response">
-                    <IconButton
-                      size="small"
-                      onClick={() => onRate(message.id, 5)}
-                      sx={{ color: 'success.main' }}
-                    >
-                      <ThumbUp fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-
-                  <Tooltip title="Poor response">
-                    <IconButton
-                      size="small"
-                      onClick={() => onRate(message.id, 1)}
-                      sx={{ color: 'error.main' }}
-                    >
-                      <ThumbDown fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                </>
+                    )}
+                  </IconButton>
+                </Tooltip>
               )}
             </Box>
           </CardContent>
@@ -437,7 +521,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ conversationId }) => {
     totalMessages,
     sendMessage,
     regenerateMessage,
-    rateMessage,
     loadMoreMessages,
     stopGeneration,
     setSelectedModel,
@@ -452,6 +535,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ conversationId }) => {
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [expandedSources, setExpandedSources] = useState<Set<string>>(new Set());
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [regeneratingMessageId, setRegeneratingMessageId] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -588,13 +672,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ conversationId }) => {
     setSnackbarMessage('Message copied to clipboard');
   }, []);
 
-  const handleRateMessage = useCallback(async (messageId: string, rating: number) => {
-    const success = await rateMessage(messageId, rating);
-    if (success) {
-      setSnackbarMessage('Thank you for your feedback!');
-    }
-  }, [rateMessage]);
-
   const toggleSources = useCallback((messageId: string) => {
     setExpandedSources(prev => {
       const newSet = new Set(prev);
@@ -607,8 +684,26 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ conversationId }) => {
     });
   }, []);
 
-  const handleRegenerateMessage = useCallback((messageId: string) => {
-    regenerateMessage(messageId);
+  const handleRegenerateMessage = useCallback(async (messageId: string) => {
+    try {
+      setRegeneratingMessageId(messageId);
+      const success = await regenerateMessage(messageId);
+      setRegeneratingMessageId(null);
+
+      if (success) {
+        setSnackbarMessage('Message regenerated successfully');
+        // Force scroll to bottom to show updated message
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }, 100);
+      } else {
+        setSnackbarMessage('Failed to regenerate message - no response from server');
+      }
+    } catch (error: any) {
+      setRegeneratingMessageId(null);
+      console.error('Regenerate error:', error);
+      setSnackbarMessage(`Failed to regenerate: ${error.message || 'Unknown error'}`);
+    }
   }, [regenerateMessage]);
 
   const handleCloseSnackbar = useCallback(() => {
@@ -646,13 +741,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ conversationId }) => {
         message={message}
         selectedModel={selectedModel}
         expandedSources={expandedSources}
+        isRegenerating={regeneratingMessageId === message.id}
         onCopy={handleCopyMessage}
         onRegenerate={handleRegenerateMessage}
-        onRate={handleRateMessage}
         onToggleSources={toggleSources}
       />
     );
-  }, [selectedModel, expandedSources, handleCopyMessage, handleRegenerateMessage, handleRateMessage, toggleSources]);
+  }, [selectedModel, expandedSources, regeneratingMessageId, handleCopyMessage, handleRegenerateMessage, toggleSources]);
 
   // ============================================================================
   // RENDER

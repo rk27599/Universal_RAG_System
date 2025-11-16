@@ -596,17 +596,26 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   };
 
   const regenerateMessage = async (messageId: string): Promise<boolean> => {
-    if (!state.currentConversation) return false;
+    if (!state.currentConversation) {
+      console.error('No current conversation');
+      return false;
+    }
 
     try {
+      console.log('Regenerating message:', messageId, 'in conversation:', state.currentConversation.id);
       const response = await apiService.regenerateMessage(state.currentConversation.id, messageId);
-      if (response.success) {
+      console.log('Regenerate response:', response);
+
+      if (response.success && response.data) {
+        console.log('Updating message with data:', response.data);
         dispatch({ type: 'UPDATE_MESSAGE', payload: { messageId, updates: response.data } });
         return true;
       }
+      console.error('Regenerate failed: success=', response.success, 'data=', response.data);
       return false;
     } catch (error: any) {
-      dispatch({ type: 'SET_ERROR', payload: 'Failed to regenerate message' });
+      console.error('Regenerate error:', error);
+      dispatch({ type: 'SET_ERROR', payload: error.response?.data?.detail || 'Failed to regenerate message' });
       return false;
     }
   };
