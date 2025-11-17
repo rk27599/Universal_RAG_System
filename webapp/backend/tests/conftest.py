@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from core.database import Base, get_db
 from core.config import Settings
 from models.user import User
-from models.document import Document, DocumentChunk
+from models.document import Document, Chunk
 from models.conversation import Conversation, Message
 
 
@@ -146,9 +146,11 @@ def test_document(test_db_session: Session, test_user: User) -> Document:
     """Create a test document"""
     document = Document(
         title="Test Document",
-        file_path="/test/path/test.pdf",
-        file_type="application/pdf",
+        source_path="/test/path/test.pdf",
+        source_type="file",
+        content_type="application/pdf",
         file_size=1024,
+        content_hash="test_hash_123",
         user_id=test_user.id,
         processing_status="completed"
     )
@@ -164,13 +166,15 @@ def test_document_chunks(test_db_session: Session, test_document: Document):
     """Create test document chunks"""
     chunks = []
     for i in range(5):
-        chunk = DocumentChunk(
+        chunk = Chunk(
             document_id=test_document.id,
-            chunk_index=i,
+            chunk_order=i,
             content=f"Test chunk content {i}. This is a sample text for testing.",
-            embedding=[0.1] * 1024,  # BGE-M3 dimension
-            page_number=i + 1,
-            metadata_={"section": f"Section {i}"}
+            content_hash=f"hash{i}",
+            character_count=50,
+            token_count=10,
+            word_count=8,
+            page_number=i + 1
         )
         chunks.append(chunk)
         test_db_session.add(chunk)

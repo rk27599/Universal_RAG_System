@@ -11,7 +11,7 @@ from pathlib import Path
 # Add backend to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
-from models.document import Document, DocumentChunk
+from models.document import Document, Chunk
 from models.user import User
 
 
@@ -22,8 +22,10 @@ class TestDocumentModel:
         """Test creating a new document"""
         document = Document(
             title="Test PDF",
-            file_path="/uploads/test.pdf",
-            file_type="application/pdf",
+            source_path="/uploads/test.pdf",
+            source_type="file",
+            content_type="application/pdf",
+            content_hash="test_hash",
             file_size=2048,
             user_id=test_user.id
         )
@@ -34,7 +36,7 @@ class TestDocumentModel:
 
         assert document.id is not None
         assert document.title == "Test PDF"
-        assert document.file_type == "application/pdf"
+        assert document.content_type == "application/pdf"
         assert document.processing_status == "pending"  # Default
         assert document.created_at is not None
 
@@ -47,8 +49,10 @@ class TestDocumentModel:
         """Test document processing status transitions"""
         document = Document(
             title="Processing Test",
-            file_path="/test.pdf",
-            file_type="application/pdf",
+            source_path="/test.pdf",
+            source_type="file",
+            content_type="application/pdf",
+            content_hash="test_hash2",
             file_size=1024,
             user_id=test_user.id,
             processing_status="pending"
@@ -57,12 +61,12 @@ class TestDocumentModel:
         test_db_session.commit()
 
         # Update to processing
-        document.processing_status = "processing"
+        document.start_processing()
         test_db_session.commit()
         assert document.processing_status == "processing"
 
         # Update to completed
-        document.processing_status = "completed"
+        document.complete_processing(chunk_count=5)
         test_db_session.commit()
         assert document.processing_status == "completed"
 
@@ -70,11 +74,14 @@ class TestDocumentModel:
         """Test document has many chunks"""
         # Create chunks
         for i in range(3):
-            chunk = DocumentChunk(
+            chunk = Chunk(
                 document_id=test_document.id,
-                chunk_index=i,
+                chunk_order=i,
                 content=f"Chunk {i} content",
-                embedding=[0.1] * 1024
+                content_hash=f"chunk_hash_{i}",
+                character_count=20,
+                token_count=5,
+                word_count=3
             )
             test_db_session.add(chunk)
 
@@ -82,17 +89,20 @@ class TestDocumentModel:
         test_db_session.refresh(test_document)
 
         assert len(test_document.chunks) == 3
-        assert test_document.chunks[0].chunk_index == 0
+        assert test_document.chunks[0].chunk_order == 0
 
     def test_document_deletion_cascades(self, test_db_session, test_document):
         """Test deleting document deletes chunks"""
         # Create chunks
         for i in range(3):
-            chunk = DocumentChunk(
+            chunk = Chunk(
                 document_id=test_document.id,
-                chunk_index=i,
+                chunk_order=i,
                 content=f"Chunk {i}",
-                embedding=[0.1] * 1024
+                content_hash=f"del_hash_{i}",
+                character_count=10,
+                token_count=2,
+                word_count=2
             )
             test_db_session.add(chunk)
 
@@ -104,23 +114,26 @@ class TestDocumentModel:
         test_db_session.commit()
 
         # Chunks should also be deleted (cascade)
-        remaining_chunks = test_db_session.query(DocumentChunk).filter_by(
+        remaining_chunks = test_db_session.query(Chunk).filter_by(
             document_id=doc_id
         ).all()
 
         assert len(remaining_chunks) == 0
 
 
-class TestDocumentChunkModel:
-    """Test DocumentChunk Model"""
+class TestChunkModel:
+    """Test Chunk Model"""
 
     def test_create_chunk(self, test_db_session, test_document):
         """Test creating a document chunk"""
-        chunk = DocumentChunk(
+        chunk = Chunk(
             document_id=test_document.id,
-            chunk_index=0,
+            chunk_order=0,
             content="This is a test chunk of text.",
-            embedding=[0.1] * 1024,
+            content_hash="test_chunk_hash",
+            character_count=30,
+            token_count=7,
+            word_count=7,
             page_number=1
         )
 
@@ -129,9 +142,9 @@ class TestDocumentChunkModel:
         test_db_session.refresh(chunk)
 
         assert chunk.id is not None
-        assert chunk.chunk_index == 0
+        assert chunk.chunk_order == 0
         assert chunk.content == "This is a test chunk of text."
-        assert len(chunk.embedding) == 1024
+        assert chunk.character_count == 30
 
     def test_chunk_document_relationship(self, test_db_session, test_document_chunks):
         """Test chunk belongs to document"""
@@ -148,31 +161,37 @@ class TestDocumentChunkModel:
             "table_count": 2
         }
 
-        chunk = DocumentChunk(
+        chunk = Chunk(
             document_id=test_document.id,
-            chunk_index=0,
+            chunk_order=0,
             content="Test content",
-            embedding=[0.1] * 1024,
-            metadata_=metadata
+            content_hash="meta_hash",
+            extraction_metadata=metadata,
+            character_count=12,
+            token_count=2,
+            word_count=2
         )
 
         test_db_session.add(chunk)
         test_db_session.commit()
         test_db_session.refresh(chunk)
 
-        assert chunk.metadata_["section"] == "Introduction"
-        assert chunk.metadata_["heading"] == "Overview"
-        assert chunk.metadata_["table_count"] == 2
+        assert chunk.extraction_metadata["section"] == "Introduction"
+        assert chunk.extraction_metadata["heading"] == "Overview"
+        assert chunk.extraction_metadata["table_count"] == 2
 
     def test_chunk_ordering(self, test_db_session, test_document):
-        """Test chunks are ordered by chunk_index"""
+        """Test chunks are ordered by chunk_order"""
         # Create chunks out of order
         for i in [2, 0, 1]:
-            chunk = DocumentChunk(
+            chunk = Chunk(
                 document_id=test_document.id,
-                chunk_index=i,
+                chunk_order=i,
                 content=f"Chunk {i}",
-                embedding=[0.1] * 1024
+                content_hash=f"order_hash_{i}",
+                character_count=10,
+                token_count=2,
+                word_count=2
             )
             test_db_session.add(chunk)
 
@@ -180,21 +199,24 @@ class TestDocumentChunkModel:
         test_db_session.refresh(test_document)
 
         # Query chunks ordered
-        chunks = test_db_session.query(DocumentChunk).filter_by(
+        chunks = test_db_session.query(Chunk).filter_by(
             document_id=test_document.id
-        ).order_by(DocumentChunk.chunk_index).all()
+        ).order_by(Chunk.chunk_order).all()
 
-        assert chunks[0].chunk_index == 0
-        assert chunks[1].chunk_index == 1
-        assert chunks[2].chunk_index == 2
+        assert chunks[0].chunk_order == 0
+        assert chunks[1].chunk_order == 1
+        assert chunks[2].chunk_order == 2
 
     def test_chunk_page_number(self, test_db_session, test_document):
         """Test chunk page number tracking"""
-        chunk = DocumentChunk(
+        chunk = Chunk(
             document_id=test_document.id,
-            chunk_index=0,
+            chunk_order=0,
             content="Page 5 content",
-            embedding=[0.1] * 1024,
+            content_hash="page_hash",
+            character_count=15,
+            token_count=3,
+            word_count=3,
             page_number=5
         )
 
@@ -203,17 +225,24 @@ class TestDocumentChunkModel:
 
         assert chunk.page_number == 5
 
-    def test_chunk_embedding_dimension(self, test_db_session, test_document):
-        """Test chunk embedding has correct dimension"""
-        # BGE-M3 uses 1024 dimensions
-        chunk = DocumentChunk(
+    def test_chunk_content_stats(self, test_db_session, test_document):
+        """Test chunk content statistics"""
+        chunk = Chunk(
             document_id=test_document.id,
-            chunk_index=0,
-            content="Test",
-            embedding=[0.1] * 1024
+            chunk_order=0,
+            content="This is a test of content statistics",
+            content_hash="stats_hash",
+            character_count=0,
+            token_count=0,
+            word_count=0
         )
+
+        # Calculate stats
+        chunk.set_content_stats()
 
         test_db_session.add(chunk)
         test_db_session.commit()
 
-        assert len(chunk.embedding) == 1024
+        assert chunk.character_count > 0
+        assert chunk.word_count > 0
+        assert chunk.token_count > 0
