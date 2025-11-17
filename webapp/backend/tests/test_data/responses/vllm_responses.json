@@ -1,0 +1,29 @@
+{
+  "chat_completion": {
+    "id": "chatcmpl-123456",
+    "object": "chat.completion",
+    "created": 1234567890,
+    "model": "Qwen/Qwen3-4B-Thinking-2507-FP8",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "Based on the provided context, molecular dynamics (MD) simulations are computational methods used to study the physical movements of atoms and molecules."
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 85,
+      "completion_tokens": 125,
+      "total_tokens": 210
+    }
+  },
+  "model_info": {
+    "model": "Qwen/Qwen3-4B-Thinking-2507-FP8",
+    "max_model_len": 16384,
+    "dtype": "float16",
+    "quantization": "fp8"
+  }
+}

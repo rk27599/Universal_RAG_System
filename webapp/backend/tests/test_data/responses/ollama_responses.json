@@ -1,0 +1,35 @@
+{
+  "generate_response": {
+    "response": "Machine learning is a branch of artificial intelligence that enables systems to learn and improve from experience without being explicitly programmed. It focuses on developing computer programs that can access data and use it to learn for themselves.",
+    "model": "mistral",
+    "done": true,
+    "context": [1, 2, 3, 4, 5],
+    "total_duration": 2500000000,
+    "load_duration": 500000000,
+    "prompt_eval_count": 45,
+    "eval_count": 120
+  },
+  "chat_response": {
+    "message": {
+      "role": "assistant",
+      "content": "Based on the documentation provided, Forcite is a module for molecular dynamics simulations in Materials Studio. It allows you to simulate the behavior of materials at the atomic level."
+    },
+    "model": "mistral",
+    "done": true,
+    "total_duration": 3000000000
+  },
+  "models_list": [
+    {
+      "name": "mistral",
+      "modified_at": "2024-01-15T10:30:00Z",
+      "size": 4368438272,
+      "digest": "abc123def456"
+    },
+    {
+      "name": "llama2",
+      "modified_at": "2024-01-10T08:15:00Z",
+      "size": 3826730240,
+      "digest": "def456ghi789"
+    }
+  ]
+}
