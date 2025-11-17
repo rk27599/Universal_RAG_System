@@ -34,6 +34,8 @@ import {
   AccountCircle,
   Logout,
   Dashboard as DashboardIcon,
+  Brightness4 as DarkModeIcon,
+  Brightness7 as LightModeIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import { useChat } from '../../contexts/ChatContext';
@@ -46,6 +48,8 @@ interface AppLayoutProps {
   onPageChange?: (page: string) => void;
   desktopDrawerOpen?: boolean;
   onDesktopDrawerChange?: (open: boolean) => void;
+  darkMode?: boolean;
+  onDarkModeToggle?: () => void;
 }
 
 const AppLayout: React.FC<AppLayoutProps> = ({
@@ -53,7 +57,9 @@ const AppLayout: React.FC<AppLayoutProps> = ({
   currentPage = 'chat',
   onPageChange,
   desktopDrawerOpen,
-  onDesktopDrawerChange
+  onDesktopDrawerChange,
+  darkMode = false,
+  onDarkModeToggle,
 }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -238,6 +244,15 @@ const AppLayout: React.FC<AppLayoutProps> = ({
               variant="outlined"
             />
           </Tooltip>
+
+          {/* Dark Mode Toggle */}
+          {onDarkModeToggle && (
+            <Tooltip title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}>
+              <IconButton onClick={onDarkModeToggle} color="inherit" sx={{ mr: 1 }}>
+                {darkMode ? <LightModeIcon /> : <DarkModeIcon />}
+              </IconButton>
+            </Tooltip>
+          )}
 
           {/* User Menu */}
           <IconButton

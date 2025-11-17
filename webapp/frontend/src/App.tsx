@@ -1,10 +1,11 @@
 /**
  * Main App Component - Secure RAG System
  * Integrates all components with security-first architecture
+ * Enhanced with dark mode support and design system
  */
 
-import React, { useState } from 'react';
-import { ThemeProvider, createTheme } from '@mui/material/styles';
+import React, { useState, useMemo } from 'react';
+import { ThemeProvider, createTheme, PaletteMode } from '@mui/material/styles';
 import { CssBaseline, Box } from '@mui/material';
 import { AuthProvider } from './contexts/AuthContext';
 import { ChatProvider } from './contexts/ChatContext';
@@ -16,34 +17,95 @@ import DocumentUpload from './components/Documents/DocumentUpload';
 import DocumentList from './components/Documents/DocumentList';
 import ModelSettings from './components/Settings/ModelSettings';
 import config from './config/config';
+import { usePersistedState } from './hooks/usePersistedState';
+import { typography, borderRadius } from './theme/tokens';
 
-// Create Material-UI theme
-const theme = createTheme({
+// Enhanced theme creation function
+const createAppTheme = (mode: PaletteMode) => createTheme({
   palette: {
+    mode,
     primary: {
       main: config.ui.primaryColor,
+      light: mode === 'dark' ? '#42a5f5' : '#64b5f6',
+      dark: mode === 'dark' ? '#1565c0' : '#1976d2',
     },
     secondary: {
       main: config.ui.secondaryColor,
+      light: mode === 'dark' ? '#f06292' : '#f48fb1',
+      dark: mode === 'dark' ? '#c2185b' : '#d32f2f',
     },
-    mode: config.ui.theme as 'light' | 'dark',
+    background: {
+      default: mode === 'dark' ? '#121212' : '#fafafa',
+      paper: mode === 'dark' ? '#1e1e1e' : '#ffffff',
+    },
+    text: {
+      primary: mode === 'dark' ? '#ffffff' : '#000000',
+      secondary: mode === 'dark' ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)',
+    },
+    divider: mode === 'dark' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.12)',
+    success: {
+      main: mode === 'dark' ? '#66bb6a' : '#4caf50',
+    },
+    warning: {
+      main: mode === 'dark' ? '#ffa726' : '#ff9800',
+    },
+    error: {
+      main: mode === 'dark' ? '#f44336' : '#d32f2f',
+    },
+    info: {
+      main: mode === 'dark' ? '#29b6f6' : '#0288d1',
+    },
   },
   typography: {
-    fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
+    fontFamily: typography.fontFamily.sans,
+    fontSize: 14,
+    h1: { fontWeight: typography.fontWeight.bold },
+    h2: { fontWeight: typography.fontWeight.bold },
+    h3: { fontWeight: typography.fontWeight.semibold },
+    h4: { fontWeight: typography.fontWeight.semibold },
+    h5: { fontWeight: typography.fontWeight.medium },
+    h6: { fontWeight: typography.fontWeight.medium },
+  },
+  shape: {
+    borderRadius: borderRadius.md,
   },
   components: {
     MuiButton: {
       styleOverrides: {
         root: {
           textTransform: 'none',
-          borderRadius: 8,
+          borderRadius: borderRadius.md,
+          fontWeight: typography.fontWeight.medium,
         },
       },
     },
     MuiCard: {
       styleOverrides: {
         root: {
-          borderRadius: 12,
+          borderRadius: borderRadius.lg,
+        },
+      },
+    },
+    MuiPaper: {
+      styleOverrides: {
+        root: {
+          backgroundImage: 'none', // Remove MUI default gradient in dark mode
+        },
+      },
+    },
+    MuiChip: {
+      styleOverrides: {
+        root: {
+          borderRadius: borderRadius.sm,
+        },
+      },
+    },
+    MuiTextField: {
+      styleOverrides: {
+        root: {
+          '& .MuiOutlinedInput-root': {
+            borderRadius: borderRadius.md,
+          },
         },
       },
     },
@@ -136,6 +198,15 @@ const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState('chat');
   const [desktopDrawerOpen, setDesktopDrawerOpen] = useState(true);
 
+  // Dark mode state with persistence
+  const [darkMode, setDarkMode] = usePersistedState<boolean>('darkMode', false);
+
+  // Memoize theme to prevent recreation on every render
+  const theme = useMemo(
+    () => createAppTheme(darkMode ? 'dark' : 'light'),
+    [darkMode]
+  );
+
   const renderCurrentPage = () => {
     switch (currentPage) {
       case 'dashboard':
@@ -164,6 +235,8 @@ const App: React.FC = () => {
               onPageChange={setCurrentPage}
               desktopDrawerOpen={desktopDrawerOpen}
               onDesktopDrawerChange={setDesktopDrawerOpen}
+              darkMode={darkMode}
+              onDarkModeToggle={() => setDarkMode(!darkMode)}
             >
               {renderCurrentPage()}
             </AppLayout>
