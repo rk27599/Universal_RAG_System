@@ -100,7 +100,7 @@ def test_user(test_db_session: Session) -> User:
     user = User(
         username="testuser",
         email="test@example.com",
-        hashed_password=get_password_hash("TestPassword123!"),
+        password_hash=get_password_hash("Pass123!"),  # Fixed: password_hash not hashed_password
         is_active=True
     )
     test_db_session.add(user)
@@ -118,7 +118,7 @@ def test_admin_user(test_db_session: Session) -> User:
     user = User(
         username="admin",
         email="admin@example.com",
-        hashed_password=get_password_hash("Admin@123"),
+        password_hash=get_password_hash("Admin123!"),  # Fixed: password_hash not hashed_password
         is_active=True
     )
     test_db_session.add(user)

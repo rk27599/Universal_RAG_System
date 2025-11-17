@@ -23,7 +23,7 @@ class TestUserModel:
         user = User(
             username="newuser",
             email="new@example.com",
-            hashed_password=get_password_hash("Password123!")
+            password_hash=get_password_hash("Password123!")
         )
 
         test_db_session.add(user)
@@ -41,7 +41,7 @@ class TestUserModel:
         user1 = User(
             username="duplicate",
             email="user1@example.com",
-            hashed_password=get_password_hash("Pass1")
+            password_hash=get_password_hash("Pass1")
         )
         test_db_session.add(user1)
         test_db_session.commit()
@@ -50,7 +50,7 @@ class TestUserModel:
         user2 = User(
             username="duplicate",
             email="user2@example.com",
-            hashed_password=get_password_hash("Pass2")
+            password_hash=get_password_hash("Pass2")
         )
         test_db_session.add(user2)
 
@@ -62,7 +62,7 @@ class TestUserModel:
         user1 = User(
             username="user1",
             email="duplicate@example.com",
-            hashed_password=get_password_hash("Pass1")
+            password_hash=get_password_hash("Pass1")
         )
         test_db_session.add(user1)
         test_db_session.commit()
@@ -71,7 +71,7 @@ class TestUserModel:
         user2 = User(
             username="user2",
             email="duplicate@example.com",
-            hashed_password=get_password_hash("Pass2")
+            password_hash=get_password_hash("Pass2")
         )
         test_db_session.add(user2)
 
@@ -114,8 +114,8 @@ class TestUserModel:
     def test_user_password_not_exposed(self, test_user):
         """Test that password hash is stored securely"""
         # Password should be hashed, not plain text
-        assert test_user.hashed_password != "TestPassword123!"
-        assert test_user.hashed_password.startswith("$2b$")
+        assert test_user.password_hash != "TestPassword123!"
+        assert test_user.password_hash.startswith("$2b$")
 
     def test_user_created_at_timestamp(self, test_db_session):
         """Test user created_at timestamp"""
@@ -124,7 +124,7 @@ class TestUserModel:
         user = User(
             username="timetest",
             email="time@example.com",
-            hashed_password=get_password_hash("Pass123!")
+            password_hash=get_password_hash("Pass123!")
         )
         test_db_session.add(user)
         test_db_session.commit()
