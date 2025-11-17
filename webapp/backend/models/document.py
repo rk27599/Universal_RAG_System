@@ -199,6 +199,7 @@ class Chunk(BaseModel, SecurityAuditMixin):
 
     # Relationships
     document = relationship("Document", back_populates="chunks")
+    media = relationship("MediaMetadata", back_populates="chunk", uselist=False, cascade="all, delete-orphan")
 
     # Database indexes for performance
     __table_args__ = (

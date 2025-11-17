@@ -148,3 +148,54 @@ datasets==2.16.1
 # - Hybrid Search: Local BM25 + local pgvector
 # - Corrective RAG: Local LLM scoring, optional DuckDuckGo fallback (user-controlled)
 # - Evaluation: Local RAGAS (no external services)
+
+# ==========================================================================
+# MULTIMODAL RAG DEPENDENCIES
+# ==========================================================================
+# Added: Support for images, audio, video, and cross-modal retrieval
+
+# Vision & Multimodal Embeddings
+open_clip_torch==2.24.0  # CLIP for text-image embeddings (768-dim ViT-L-14)
+timm==0.9.12  # Required by OpenCLIP
+
+# OCR - Text extraction from images and scanned documents
+pytesseract==0.3.10  # Tesseract OCR wrapper
+easyocr==1.7.0  # Multilingual OCR (optional, better for non-English)
+
+# Image Captioning - Generate descriptions for images
+# transformers==4.35.2  # Already included above
+# torch>=2.2.0  # Already included above
+# Pillow==10.1.0  # Already included above
+
+# Audio Transcription - Whisper for speech-to-text
+openai-whisper==20231117  # OpenAI Whisper (accurate)
+faster-whisper==1.0.0  # 10x faster Whisper alternative (recommended)
+
+# Video Processing - Frame extraction and analysis
+opencv-python==4.9.0.80  # OpenCV for video processing
+moviepy==1.0.3  # Video editing and processing (optional)
+
+# Audio/Video utilities
+ffmpeg-python==0.2.0  # FFmpeg wrapper for audio/video processing
+pydub==0.25.1  # Audio manipulation
+
+# PyMuPDF for PDF processing (already used, ensure version)
+PyMuPDF==1.23.8  # fitz - for PDF text and image extraction
+
+# NLTK for sentence tokenization (used in chunking)
+nltk==3.8.1  # Natural language processing
+
+# Additional multimodal dependencies
+imageio==2.33.1  # Image I/O for video frame handling
+imageio-ffmpeg==0.4.9  # FFmpeg backend for imageio
+
+# Optional: ImageBind for unified multimodal embeddings (all modalities in one space)
+# imagebind==1.0.0  # Meta's ImageBind (uncomment for 6-modality support)
+
+# Note: Multimodal system maintains local-first architecture
+# - CLIP embeddings: Local model (ViT-L-14, 768-dim)
+# - OCR: Local Tesseract/EasyOCR
+# - Image captioning: Local BLIP-2 or LLaVA
+# - Audio transcription: Local Whisper (no API calls)
+# - Video processing: Local OpenCV
+# All processing happens on your infrastructure, no external APIs required

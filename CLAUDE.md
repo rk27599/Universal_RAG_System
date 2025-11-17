@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is an **advanced RAG (Retrieval-Augmented Generation) system** that works with **any website and PDF documents**. It features intelligent web scraping, PDF processing with table/image extraction, structure-aware content extraction, semantic chunking, enhanced TF-IDF retrieval, and local LLM integration via Ollama.
+This is an **advanced Multimodal RAG (Retrieval-Augmented Generation) system** that works with **any website, PDF documents, images, audio, and video**. It features intelligent web scraping, PDF processing with table/image extraction, structure-aware content extraction, semantic chunking, enhanced TF-IDF retrieval, multimodal embeddings (CLIP), OCR, audio transcription (Whisper), video frame extraction, and local LLM integration via Ollama/vLLM.
 
 ## Architecture
 
@@ -38,6 +38,50 @@ This is an **advanced RAG (Retrieval-Augmented Generation) system** that works w
    - `data/*_cache.pkl`: Processed chunks and vectors cache
    - `data/uploads/`: Uploaded PDF and document files
 
+### Multimodal Components (✨ NEW - November 2025)
+
+5. **CLIP Embedding Service** (`webapp/backend/services/multimodal/embedding_service_clip.py`):
+   - Text and image embeddings in shared 768-dim space
+   - OpenCLIP ViT-L-14 model for high-quality embeddings
+   - Cross-modal search (text → image, image → text)
+   - Batch processing with GPU acceleration
+
+6. **OCR Service** (`webapp/backend/services/multimodal/ocr_service.py`):
+   - Tesseract OCR for fast English text extraction
+   - EasyOCR for multilingual support (100+ languages)
+   - Confidence scoring and bounding box extraction
+   - Automatic scanned document detection
+
+7. **Image Captioning Service** (`webapp/backend/services/multimodal/image_captioning_service.py`):
+   - BLIP-2 for high-quality image descriptions
+   - Chart/diagram detection and description
+   - Detailed multi-prompt captioning
+   - Integration with PDF image extraction
+
+8. **Audio Processor** (`webapp/backend/services/multimodal/audio_processor.py`):
+   - OpenAI Whisper for speech-to-text (100+ languages)
+   - faster-whisper for 10x speed improvement
+   - Time-aligned transcript segments
+   - Audio extraction from video files
+
+9. **Video Processor** (`webapp/backend/services/multimodal/video_processor.py`):
+   - Keyframe extraction with scene detection
+   - Uniform frame sampling
+   - Thumbnail generation
+   - Video metadata extraction (duration, FPS, codec)
+
+10. **Multimodal Retrieval Service** (`webapp/backend/services/multimodal/multimodal_retrieval_service.py`):
+    - Cross-modal search orchestration
+    - Hybrid text-image queries
+    - Modality filtering and fusion
+    - Unified ranking across modalities
+
+11. **Media Database Models** (`webapp/backend/models/media.py`):
+    - `media_metadata` table for images/audio/video
+    - `transcript_segments` table for time-aligned transcripts
+    - CLIP embedding storage (vector(768))
+    - Comprehensive metadata tracking
+
 ## Development Commands
 
 ### Running Examples
@@ -53,6 +97,9 @@ python examples/benchmarking.py
 
 # Interactive demo with any website
 python examples/generic_usage.py
+
+# ✨ NEW: Multimodal RAG examples
+python examples/multimodal_example.py
 ```
 
 ### Local File Processing
@@ -83,20 +130,37 @@ jupyter lab notebooks/RAG_HTML.ipynb
 
 ### Python Environment
 - Python 3.12+ (✅ Migrated from 3.10 - October 2024)
-- PyTorch 2.6.0+cu124 (✅ Required for BGE-M3 embeddings)
+- PyTorch 2.6.0+cu124 (✅ Required for BGE-M3 and multimodal models)
 - CUDA 12.4+ (for GPU acceleration)
 - Core dependencies: requests, sklearn, beautifulsoup4, numpy, pickle
 - PDF dependencies: PyMuPDF, pdfplumber, Pillow, nltk
 - Embedding: FlagEmbedding 1.3.5 (BGE-M3 model)
-- Optional: Ollama for full text generation
+- **Multimodal**: OpenCLIP (CLIP), Whisper, OpenCV, Tesseract OCR
+- Optional: Ollama/vLLM for text generation, BLIP-2 for image captioning
 - Performance: ~10-15% faster than Python 3.10
 
 ### Installing Dependencies
+
+#### System Dependencies (for Multimodal Features)
+```bash
+# Ubuntu/Debian
+sudo apt-get update
+sudo apt-get install tesseract-ocr tesseract-ocr-eng ffmpeg
+
+# macOS
+brew install tesseract ffmpeg
+
+# Windows: Download installers
+# Tesseract: https://github.com/UB-Mannheim/tesseract/wiki
+# FFmpeg: https://ffmpeg.org/download.html
+```
+
+#### Python Dependencies
 ```bash
 # Activate virtual environment
 source venv/bin/activate
 
-# Install PyTorch 2.6.0 with CUDA 12.4 support (Required for BGE-M3)
+# Install PyTorch 2.6.0 with CUDA 12.4 support (Required for BGE-M3 and multimodal)
 pip install torch==2.6.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
 
 # Install BGE-M3 embedding model
@@ -105,19 +169,31 @@ pip install FlagEmbedding==1.3.5
 # Install PDF processing dependencies
 pip install PyMuPDF pdfplumber Pillow nltk
 
+# ✨ NEW: Install multimodal dependencies
+pip install open_clip_torch pytesseract easyocr openai-whisper faster-whisper opencv-python
+
 # Install dev/testing dependencies (optional)
 pip install -r webapp/requirements.txt
 
-# Install backend production dependencies
+# Install backend production dependencies (includes all multimodal deps)
 pip install -r webapp/backend/requirements.txt
 
 # Download NLTK data for sentence tokenization
 python -c "import nltk; nltk.download('punkt_tab')"
 ```
 
+#### Database Migration (for Multimodal Support)
+```bash
+# Add multimodal tables to database
+python webapp/backend/scripts/migrate_add_multimodal_support.py
+
+# Verify migration
+python webapp/backend/scripts/migrate_add_multimodal_support.py --verify
+```
+
 ## Embedding Models
 
-### BGE-M3 (Current - Default)
+### Text Embeddings: BGE-M3 (Current - Default)
 The system uses **BGE-M3** for high-quality semantic embeddings:
 
 | Feature | BGE-M3 (Current) | MiniLM (Old) |
@@ -127,6 +203,18 @@ The system uses **BGE-M3** for high-quality semantic embeddings:
 | **Languages** | 100+ | English only |
 | **Quality** | State-of-the-art MTEB | Good |
 | **Model** | BAAI/bge-m3 | sentence-transformers/all-MiniLM-L6-v2 |
+
+### Multimodal Embeddings: CLIP ViT-L-14 (✨ NEW)
+The system uses **CLIP** for text-image embeddings in shared space:
+
+| Feature | CLIP ViT-L-14 | Alternative: ViT-B-32 |
+|---------|---------------|----------------------|
+| **Dimensions** | 768 | 512 |
+| **Modalities** | Text + Image | Text + Image |
+| **Use Case** | Cross-modal search | Faster, smaller model |
+| **Model Size** | ~1.7 GB | ~350 MB |
+| **Quality** | Excellent | Good |
+| **Model** | openai/clip-vit-large-patch14 | openai/clip-vit-base-patch32 |
 
 ### Migration Complete ✅
 - **10,366 chunks** re-embedded with BGE-M3
@@ -374,6 +462,7 @@ asyncio.run(process_pdf())
 
 ## Key Features
 
+### Core RAG Features
 - **🌐 Universal Web Scraping**: Works with any website automatically
 - **📄 PDF Processing**: Hybrid PyMuPDF + pdfplumber for comprehensive extraction
 - **📊 Table Detection**: Intelligent detection and markdown formatting
@@ -387,6 +476,21 @@ asyncio.run(process_pdf())
 - **⚡ Performance**: TF-IDF with trigrams, boosted scoring, smart caching
 - **🤖 Ethics**: Respects robots.txt and implements polite crawling
 - **🚀 Flexible LLM Providers**: Choose between Ollama (easy) or vLLM (high-performance multi-GPU)
+
+### Multimodal Features (✨ NEW - November 2025)
+- **🎨 CLIP Embeddings**: Text and images in shared 768-dim embedding space
+- **🔍 Cross-Modal Search**: Search images with text queries, find documents by image
+- **📸 OCR**: Extract text from scanned documents (Tesseract + EasyOCR, 100+ languages)
+- **💬 Image Captioning**: Auto-generate descriptions with BLIP-2
+- **📊 Chart Detection**: Identify and describe charts, diagrams, graphs
+- **🎤 Audio Transcription**: Whisper for speech-to-text (100+ languages)
+- **⚡ faster-whisper**: 10x faster transcription with same quality
+- **📹 Video Processing**: Keyframe extraction, scene detection, thumbnails
+- **🎬 Video Metadata**: Duration, FPS, resolution, codec extraction
+- **🔊 Audio from Video**: Extract and transcribe audio tracks
+- **🌐 Multilingual OCR**: Support for 100+ languages via EasyOCR
+- **⏱️ Time-Aligned Transcripts**: Segment-level timestamps for audio/video
+- **🖼️ Multimodal Database**: Dedicated tables for media metadata and transcripts
 
 ## File Structure
 
