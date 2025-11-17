@@ -307,3 +307,25 @@ def validate_security_configuration():
 
 # Run validation on import
 validate_security_configuration()
+# ============================================================================
+# Convenience Functions for Testing and Simple Use Cases
+# ============================================================================
+
+# Create a global security manager instance
+_security_manager = SecurityManager()
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify password against hash - convenience wrapper"""
+    return _security_manager.verify_password(plain_password, hashed_password)
+
+def get_password_hash(password: str) -> str:
+    """Generate password hash - convenience wrapper"""
+    return _security_manager.get_password_hash(password)
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    """Create JWT access token - convenience wrapper"""
+    return _security_manager.create_access_token(data, expires_delta)
+
+def decode_access_token(token: str) -> Optional[dict]:
+    """Decode JWT token and return payload - convenience wrapper"""
+    return _security_manager.verify_token(token)
